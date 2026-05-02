@@ -24,6 +24,10 @@ The app is built for the everyday Mac flow: text, links, code, files, images, mi
 
 For running tests, the active developer directory must provide `XCTest`. A Command Line Tools-only setup may build the app but fail tests with `no such module 'XCTest'`.
 
+## Setup
+
+For install, first-run, development, permissions, diagnostics, and release signing instructions, read [SETUP.md](SETUP.md).
+
 ## Build Locally
 
 ```bash
