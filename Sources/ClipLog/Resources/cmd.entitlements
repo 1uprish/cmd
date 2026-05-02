@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  cmd.entitlements
+  ================
+
+  App Sandbox is disabled because cmd installs a CGEventTap at
+  kCGHIDEventTap to intercept Cmd-V before the system paste action fires.
+  Sandboxed apps are restricted to lower-level event taps and cannot provide
+  the global hold-to-open paste HUD reliably.
+
+  This app is distributed outside the Mac App Store. Production builds should
+  still be hardened-runtime signed and Apple-notarised for Gatekeeper.
+-->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.app-sandbox</key>
+    <false/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <false/>
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <false/>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>

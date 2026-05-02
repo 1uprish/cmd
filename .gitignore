@@ -1,0 +1,72 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# Xcode
+DerivedData/
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# Build and release artifacts
+build/
+*.app/
+*.dmg
+*.pkg
+*.xcarchive
+*.ipa
+*.zip
+
+# Signing, notarization, and private release material
+*.cer
+*.p12
+*.mobileprovision
+*.provisionprofile
+*.entitlements.der
+notarytool-profile.json
+notarization-*.json
+
+# Local agent/editor state
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# Logs and diagnostics
+*.log
+*.trace
+*.sample.txt
+cmd.log
+cmd.log.1
+
+# Runtime data
+Application Support/
+Diagnostics/
+Media/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+*.db-shm
+*.db-wal
+.enckey
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+._*
+.Spotlight-V100
+.Trashes
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
