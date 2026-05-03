@@ -76,6 +76,18 @@ public final class PasteboardWatcher: @unchecked Sendable {
         var previewText: String {
             clips.map(\.previewLine).joined(separator: "\n")
         }
+
+        var imageByteCount: Int {
+            clips.reduce(0) { total, clip in
+                total + (clip.imageData?.count ?? 0)
+            }
+        }
+
+        var imageCount: Int {
+            clips.reduce(0) { total, clip in
+                total + (clip.imageData == nil ? 0 : 1)
+            }
+        }
     }
 
     /// Persistent append collection. While active, every copied text value is
@@ -105,6 +117,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
     private static let slowPollThreshold: TimeInterval = 0.25
     private static let maxInlineImageBytes = 18 * 1024 * 1024
     private static let maxRichPayloadBytes = 12 * 1024 * 1024
+    private static let maxAppendClips = 24
+    private static let maxAppendImageBytes = 24 * 1024 * 1024
+    private static let maxAppendTextCharacters = 60_000
+    private static let maxRichAppendImageBytes = 4 * 1024 * 1024
+    private static let maxRichAppendImages = 3
 
     private static let imagePasteboardTypes: [NSPasteboard.PasteboardType] = [
         .png,
@@ -160,6 +177,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
         DiagnosticsLogbook.shared.record("pasteboard_watcher_stopped", category: "pasteboard")
         timer?.cancel()
         timer = nil
+        shutdownAppendSession()
     }
 
     // MARK: - Poll
@@ -273,10 +291,18 @@ public final class PasteboardWatcher: @unchecked Sendable {
         guard var session = appendSession else { return }
         guard !newClips.isEmpty else { return }
 
+        var didAppend = false
         for newClip in newClips {
-            if shouldAppend(newClip, to: session) {
+            if shouldAppend(newClip, to: session),
+               canAppend(newClip, to: session) {
                 session.clips.append(newClip)
+                didAppend = true
             }
+        }
+
+        guard didAppend else {
+            lastChangeCount = pb.changeCount
+            return
         }
 
         session.expiresAt = Date().addingTimeInterval(appendSessionTimeout)
@@ -297,6 +323,42 @@ public final class PasteboardWatcher: @unchecked Sendable {
         case .image(let data):
             return session.clips.last?.imageData != data
         }
+    }
+
+    private func canAppend(_ clip: AppendClip, to session: AppendSession) -> Bool {
+        guard session.clips.count < Self.maxAppendClips else {
+            logAppendSkip(reason: "clip_limit", value: session.clips.count, limit: Self.maxAppendClips)
+            return false
+        }
+
+        switch clip {
+        case .text(let value):
+            let newCount = session.characterCount + value.count
+            guard newCount <= Self.maxAppendTextCharacters else {
+                logAppendSkip(reason: "text_character_limit", value: newCount, limit: Self.maxAppendTextCharacters)
+                return false
+            }
+            return true
+        case .image(let data):
+            let newCount = session.imageByteCount + data.count
+            guard newCount <= Self.maxAppendImageBytes else {
+                logAppendSkip(reason: "image_byte_limit", value: newCount, limit: Self.maxAppendImageBytes)
+                return false
+            }
+            return true
+        }
+    }
+
+    private func logAppendSkip(reason: String, value: Int, limit: Int) {
+        DiagnosticsLogbook.shared.record(
+            "append_clip_skipped",
+            category: "append",
+            details: [
+                "reason": reason,
+                "value": "\(value)",
+                "limit": "\(limit)"
+            ]
+        )
     }
 
     private func writeAppendSession(_ session: AppendSession, to pb: NSPasteboard) {
@@ -338,6 +400,13 @@ public final class PasteboardWatcher: @unchecked Sendable {
         appendExpiryWorkItem?.cancel()
         appendExpiryWorkItem = nil
         commitAppendSessionIfNeeded()
+        appendSession = nil
+        publishAppendSnapshot(isActive: false)
+    }
+
+    private func shutdownAppendSession() {
+        appendExpiryWorkItem?.cancel()
+        appendExpiryWorkItem = nil
         appendSession = nil
         publishAppendSnapshot(isActive: false)
     }
@@ -695,14 +764,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func imagePasteboardItem(fromPNGData data: Data) -> NSPasteboardItem? {
-        guard let image = NSImage(data: data) else { return nil }
+        guard NSImage(data: data) != nil else { return nil }
 
         let item = NSPasteboardItem()
         item.setData(data, forType: .png)
         item.setData(data, forType: NSPasteboard.PasteboardType("public.png"))
-        if let tiffData = image.tiffRepresentation {
-            item.setData(tiffData, forType: .tiff)
-        }
         if let fileURL = temporaryAppendImageURL(for: data) {
             item.setString(fileURL.absoluteString, forType: .fileURL)
             item.setString(fileURL.absoluteString, forType: NSPasteboard.PasteboardType("public.file-url"))
@@ -718,30 +784,42 @@ public final class PasteboardWatcher: @unchecked Sendable {
             item.setString(plainText, forType: .string)
         }
 
-        if let html = mixedAppendHTML(for: session) {
-            item.setString(html, forType: .html)
-        }
-
-        if let attributed = mixedAppendAttributedString(for: session) {
-            let range = NSRange(location: 0, length: attributed.length)
-            if let rtfdWrapper = try? attributed.fileWrapper(
-                from: range,
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
-            ),
-               let rtfdData = rtfdWrapper.serializedRepresentation {
-                item.setData(rtfdData, forType: .rtfd)
-                item.setData(rtfdData, forType: .flatRTFD)
+        if shouldWriteRichAppendFormats(for: session) {
+            if let html = mixedAppendHTML(for: session) {
+                item.setString(html, forType: .html)
             }
 
-            if let rtfData = try? attributed.data(
-                from: range,
-                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-            ) {
-                item.setData(rtfData, forType: .rtf)
+            if let attributed = mixedAppendAttributedString(for: session) {
+                let range = NSRange(location: 0, length: attributed.length)
+                if let rtfdWrapper = try? attributed.fileWrapper(
+                    from: range,
+                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+                ),
+                   let rtfdData = rtfdWrapper.serializedRepresentation {
+                    item.setData(rtfdData, forType: .rtfd)
+                    item.setData(rtfdData, forType: .flatRTFD)
+                }
             }
         }
 
         return item.types.isEmpty ? nil : item
+    }
+
+    private func shouldWriteRichAppendFormats(for session: AppendSession) -> Bool {
+        guard session.imageCount <= Self.maxRichAppendImages,
+              session.imageByteCount <= Self.maxRichAppendImageBytes
+        else {
+            DiagnosticsLogbook.shared.record(
+                "append_rich_formats_skipped",
+                category: "append",
+                details: [
+                    "imageCount": "\(session.imageCount)",
+                    "imageBytes": "\(session.imageByteCount)"
+                ]
+            )
+            return false
+        }
+        return true
     }
 
     private func mixedAppendHTML(for session: AppendSession) -> String? {

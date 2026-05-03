@@ -148,6 +148,15 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     public func stop() {
         DiagnosticsLogbook.shared.record("event_tap_stopped", category: "event_tap")
+        tapQueue.sync {
+            if case .pendingHold(_, let timer) = state {
+                timer.cancel()
+            }
+            state = .idle
+            commandKeyIsDown = false
+            commandTapClean = false
+            lastCommandTapTime = nil
+        }
         tap.map { CGEvent.tapEnable(tap: $0, enable: false) }
         tapRunLoop.map { CFRunLoopStop($0) }
         tapRunLoop = nil

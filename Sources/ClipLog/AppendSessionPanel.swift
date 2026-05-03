@@ -19,6 +19,8 @@ final class AppendSessionPanel {
         preview: ""
     )
     private var latestAnchorFrame: NSRect?
+    private var visibilityGeneration = 0
+    private var lastRepositionFrame: NSRect?
 
     private init() {
         panel = NSPanel(
@@ -167,11 +169,18 @@ final class AppendSessionPanel {
     }
 
     private func show() {
-        guard !panel.isVisible else { return }
+        visibilityGeneration &+= 1
+        panel.contentView?.layer?.removeAllAnimations()
+        panel.contentView?.layer?.transform = CATransform3DIdentity
+
+        if panel.isVisible {
+            panel.alphaValue = 1
+            return
+        }
+
         DiagnosticsLogbook.shared.record("append_indicator_shown", category: "append")
         panel.alphaValue = 0
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.removeAllAnimations()
         panel.contentView?.layer?.transform = CATransform3DMakeScale(0.96, 0.96, 1)
         panel.orderFrontRegardless()
         animateContentScale(from: 0.96, to: 1.0, duration: 0.34)
@@ -193,6 +202,8 @@ final class AppendSessionPanel {
     private func hide() {
         stopFollowingScreen()
         guard panel.isVisible else { return }
+        visibilityGeneration &+= 1
+        let generation = visibilityGeneration
         previewView.stop()
         DiagnosticsLogbook.shared.record("append_indicator_hidden", category: "append")
         panel.contentView?.wantsLayer = true
@@ -206,9 +217,13 @@ final class AppendSessionPanel {
             frame.origin.y += 6
             panel.animator().setFrame(frame, display: true)
         } completionHandler: {
+            guard self.visibilityGeneration == generation,
+                  !self.latestSnapshot.isActive
+            else { return }
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1
             self.panel.contentView?.layer?.transform = CATransform3DIdentity
+            self.lastRepositionFrame = nil
         }
     }
 
@@ -240,6 +255,15 @@ final class AppendSessionPanel {
         latestAnchorFrame = anchor
 
         let frame = panelFrame(anchor: anchor, visibleFrame: visible)
+        if let lastRepositionFrame,
+           abs(lastRepositionFrame.origin.x - frame.origin.x) < 1,
+           abs(lastRepositionFrame.origin.y - frame.origin.y) < 1,
+           abs(lastRepositionFrame.width - frame.width) < 1,
+           abs(lastRepositionFrame.height - frame.height) < 1 {
+            return
+        }
+        lastRepositionFrame = frame
+
         guard animated, panel.isVisible else {
             panel.setFrame(frame.integral, display: true)
             return
