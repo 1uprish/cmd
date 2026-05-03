@@ -7,6 +7,9 @@
 #                     identity is used.
 #   ALLOW_ADHOC       Set to 1 only for local unsigned testing with
 #                     SIGNING_IDENTITY="-".
+#   SWIFT_BUILD_SCRATCH_PATH
+#                     Optional scratch path for clean builds when .build was
+#                     copied from another checkout or has stale module caches.
 #
 # Usage:
 #   ./scripts/build-release.sh
@@ -19,6 +22,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 ALLOW_ADHOC="${ALLOW_ADHOC:-0}"
+SWIFT_BUILD_SCRATCH_PATH="${SWIFT_BUILD_SCRATCH_PATH:-}"
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -29,6 +33,7 @@ MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES_DIR="$CONTENTS/Resources"
 
 BINARY_SRC=""
+SWIFT_PRODUCTS_DIR="$REPO_ROOT/.build"
 INFO_PLIST_SRC="$REPO_ROOT/Sources/ClipLog/Info.plist"
 ENTITLEMENTS_SRC="$REPO_ROOT/Sources/ClipLog/Resources/cmd.entitlements"
 PRIVACY_SRC="$REPO_ROOT/Sources/ClipLog/Resources/PrivacyInfo.xcprivacy"
@@ -78,10 +83,10 @@ EOF
 
 find_release_binary() {
     local candidates=(
-        "$REPO_ROOT/.build/apple/Products/Release/ClipLog"
-        "$REPO_ROOT/.build/arm64-apple-macosx/release/ClipLog"
-        "$REPO_ROOT/.build/x86_64-apple-macosx/release/ClipLog"
-        "$REPO_ROOT/.build/release/ClipLog"
+        "$SWIFT_PRODUCTS_DIR/apple/Products/Release/ClipLog"
+        "$SWIFT_PRODUCTS_DIR/arm64-apple-macosx/release/ClipLog"
+        "$SWIFT_PRODUCTS_DIR/x86_64-apple-macosx/release/ClipLog"
+        "$SWIFT_PRODUCTS_DIR/release/ClipLog"
     )
 
     for candidate in "${candidates[@]}"; do
@@ -91,7 +96,7 @@ find_release_binary() {
         fi
     done
 
-    BINARY_SRC="$(find "$REPO_ROOT/.build" -path '*/release/ClipLog' -type f -perm -111 2>/dev/null | head -n 1 || true)"
+    BINARY_SRC="$(find "$SWIFT_PRODUCTS_DIR" -path '*/release/ClipLog' -type f -perm -111 2>/dev/null | head -n 1 || true)"
     if [[ -z "$BINARY_SRC" ]]; then
         echo "ERROR: Release binary not found after swift build." >&2
         exit 1
@@ -104,7 +109,12 @@ find_release_binary() {
 resolve_signing_identity
 
 echo "==> Building cmd (release)..."
-swift build -c release --package-path "$REPO_ROOT"
+swift_build_args=(-c release --package-path "$REPO_ROOT")
+if [[ -n "$SWIFT_BUILD_SCRATCH_PATH" ]]; then
+    SWIFT_PRODUCTS_DIR="$SWIFT_BUILD_SCRATCH_PATH"
+    swift_build_args+=(--scratch-path "$SWIFT_BUILD_SCRATCH_PATH")
+fi
+swift build "${swift_build_args[@]}"
 find_release_binary
 echo "    Build succeeded."
 echo "    Binary: $BINARY_SRC"

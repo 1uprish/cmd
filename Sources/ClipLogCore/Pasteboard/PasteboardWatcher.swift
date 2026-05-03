@@ -101,6 +101,10 @@ public final class PasteboardWatcher: @unchecked Sendable {
     private var lastClipString: String = ""
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.cmd.pasteboard", qos: .utility)
+    private static let pollInterval: DispatchTimeInterval = .milliseconds(350)
+    private static let slowPollThreshold: TimeInterval = 0.25
+    private static let maxInlineImageBytes = 18 * 1024 * 1024
+    private static let maxRichPayloadBytes = 12 * 1024 * 1024
 
     private static let imagePasteboardTypes: [NSPasteboard.PasteboardType] = [
         .png,
@@ -109,8 +113,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
         NSPasteboard.PasteboardType("public.heic"),
         NSPasteboard.PasteboardType("public.heif"),
         NSPasteboard.PasteboardType("com.compuserve.gif"),
-        NSPasteboard.PasteboardType("org.webmproject.webp"),
-        NSPasteboard.PasteboardType("com.adobe.pdf")
+        NSPasteboard.PasteboardType("org.webmproject.webp")
     ]
 
     private static let attachmentLabelFallbacks: Set<String> = [
@@ -147,7 +150,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
     public func start() {
         DiagnosticsLogbook.shared.record("pasteboard_watcher_started", category: "pasteboard")
         let t = DispatchSource.makeTimerSource(queue: queue)
-        t.schedule(deadline: .now(), repeating: .milliseconds(200))
+        t.schedule(deadline: .now(), repeating: Self.pollInterval)
         t.setEventHandler { [weak self] in self?.poll() }
         t.resume()
         self.timer = t
@@ -165,7 +168,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
         let startedAt = Date()
         defer {
             let elapsed = Date().timeIntervalSince(startedAt)
-            if elapsed >= 0.25 {
+            if elapsed >= Self.slowPollThreshold {
                 DiagnosticsLogbook.shared.record(
                     "slow_pasteboard_poll",
                     category: "performance",
@@ -184,12 +187,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             return
         }
 
-        // Capture frontmost bundle ID and window title on main thread where NSWorkspace is authoritative.
-        let (bundle, windowTitle) = DispatchQueue.main.sync { () -> (String, String?) in
-            let bid = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
-            let title = self.frontWindowTitle(for: bid)
-            return (bid, title)
-        }
+        let bundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? ""
 
         if Self.knownPasswordManagers.contains(bundle) ||
            Self.knownTransientSources.contains(bundle) ||
@@ -205,7 +203,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             return
         }
 
-        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: windowTitle) else { return }
+        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil) else { return }
 
         // Track the last plain-text content for potential future appends.
         if let str = pb.string(forType: .string) {
@@ -400,7 +398,6 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     private func buildEntry(from pb: NSPasteboard, sourceBundle: String, windowTitle: String?) -> ClipEntry? {
         let type = classifyType(pb)
-
         switch type {
         case .text, .url, .code:
             guard let str = pb.string(forType: .string), !str.isEmpty else { return nil }
@@ -460,8 +457,13 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         case .image:
             guard let originalData = imageData(from: pb) else { return nil }
-            if originalData.count > 10 * 1024 * 1024 {
+            if originalData.count > Self.maxInlineImageBytes {
                 Self.logger.info("Skipped oversized image (\(originalData.count) bytes)")
+                DiagnosticsLogbook.shared.record(
+                    "oversized_image_skipped",
+                    category: "pasteboard",
+                    details: ["bytes": "\(originalData.count)"]
+                )
                 return nil
             }
 
@@ -523,33 +525,13 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
     }
 
-    // MARK: - Accessibility window title
-
-    private func frontWindowTitle(for bundleID: String) -> String? {
-        guard !bundleID.isEmpty,
-              let app = NSRunningApplication.runningApplications(withBundleIdentifier: bundleID).first
-        else { return nil }
-        let axApp = AXUIElementCreateApplication(app.processIdentifier)
-        var windowRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axApp, kAXFocusedWindowAttribute as CFString, &windowRef) == .success,
-              let window = windowRef else { return nil }
-        // Safe cast: verify the CFTypeRef is actually an AXUIElement before using it.
-        // CFGetTypeID comparison avoids the force-cast crash on unexpected types.
-        guard CFGetTypeID(window) == AXUIElementGetTypeID() else { return nil }
-        let axWindow = window as! AXUIElement   // safe: type confirmed above
-        var titleRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef) == .success,
-              let title = titleRef as? String, !title.isEmpty else { return nil }
-        return title
-    }
-
     // MARK: - Type classification
     //
     // Order matters — check more specific types first.
 
     private func classifyType(_ pb: NSPasteboard) -> ClipContentType {
         if isRichClipboard(pb) { return .rich }
-        if imageData(from: pb) != nil { return .image }
+        if hasImageType(pb) { return .image }
         if pb.types?.contains(.fileURL) == true { return .file }
         if pb.types?.contains(.color) == true { return .color }
 
@@ -566,8 +548,8 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func isRichClipboard(_ pb: NSPasteboard) -> Bool {
-        if pb.data(forType: .rtfd) != nil ||
-           pb.data(forType: .flatRTFD) != nil {
+        if pb.types?.contains(.rtfd) == true ||
+           pb.types?.contains(.flatRTFD) == true {
             return true
         }
 
@@ -584,8 +566,9 @@ public final class PasteboardWatcher: @unchecked Sendable {
         let plainText = pb.string(forType: .string) ?? ""
         let html = pb.string(forType: .html)
             ?? pb.string(forType: NSPasteboard.PasteboardType("text/html"))
-        let rtfd = pb.data(forType: .flatRTFD) ?? pb.data(forType: .rtfd)
-        let rtf = pb.data(forType: .rtf)
+        let rtfd = boundedData(from: pb, forType: .flatRTFD, maxBytes: Self.maxRichPayloadBytes)
+            ?? boundedData(from: pb, forType: .rtfd, maxBytes: Self.maxRichPayloadBytes)
+        let rtf = boundedData(from: pb, forType: .rtf, maxBytes: Self.maxRichPayloadBytes)
 
         guard !plainText.isEmpty || html?.isEmpty == false || rtfd?.isEmpty == false else {
             return nil
@@ -599,9 +582,19 @@ public final class PasteboardWatcher: @unchecked Sendable {
         )
     }
 
+    private func hasImageType(_ pb: NSPasteboard) -> Bool {
+        if let types = pb.types, Self.imagePasteboardTypes.contains(where: { types.contains($0) }) {
+            return true
+        }
+
+        return pb.pasteboardItems?.contains { item in
+            Self.imagePasteboardTypes.contains { item.types.contains($0) }
+        } == true
+    }
+
     private func imageData(from pb: NSPasteboard) -> Data? {
         for type in Self.imagePasteboardTypes {
-            if let data = pb.data(forType: type),
+            if let data = boundedData(from: pb, forType: type, maxBytes: Self.maxInlineImageBytes),
                let normalized = normalizedPNGData(from: data) {
                 return normalized
             }
@@ -609,7 +602,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         for item in pb.pasteboardItems ?? [] {
             for type in Self.imagePasteboardTypes {
-                if let data = item.data(forType: type),
+                if let data = boundedData(from: item, forType: type, maxBytes: Self.maxInlineImageBytes),
                    let normalized = normalizedPNGData(from: data) {
                     return normalized
                 }
@@ -620,20 +613,42 @@ public final class PasteboardWatcher: @unchecked Sendable {
         return nil
     }
 
-    private func imageData(fromFileURLString value: String) -> Data? {
-        if let url = URL(string: value), url.isFileURL {
-            return imageData(fromFileURL: url)
-        }
-
-        return imageData(fromFileURL: URL(fileURLWithPath: value))
+    private func boundedData(
+        from pb: NSPasteboard,
+        forType type: NSPasteboard.PasteboardType,
+        maxBytes: Int
+    ) -> Data? {
+        guard let data = pb.data(forType: type) else { return nil }
+        return boundedData(data, type: type, maxBytes: maxBytes)
     }
 
-    private func imageData(fromFileURL url: URL) -> Data? {
-        guard url.isFileURL,
-              let raw = try? Data(contentsOf: url),
-              let normalized = normalizedPNGData(from: raw)
-        else { return nil }
-        return normalized
+    private func boundedData(
+        from item: NSPasteboardItem,
+        forType type: NSPasteboard.PasteboardType,
+        maxBytes: Int
+    ) -> Data? {
+        guard let data = item.data(forType: type) else { return nil }
+        return boundedData(data, type: type, maxBytes: maxBytes)
+    }
+
+    private func boundedData(
+        _ data: Data,
+        type: NSPasteboard.PasteboardType,
+        maxBytes: Int
+    ) -> Data? {
+        guard data.count <= maxBytes else {
+            DiagnosticsLogbook.shared.record(
+                "oversized_pasteboard_payload_skipped",
+                category: "pasteboard",
+                details: [
+                    "type": type.rawValue,
+                    "bytes": "\(data.count)",
+                    "limitBytes": "\(maxBytes)"
+                ]
+            )
+            return nil
+        }
+        return data
     }
 
     private func normalizedPNGData(from data: Data) -> Data? {

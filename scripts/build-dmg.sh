@@ -102,9 +102,15 @@ tell application "Finder"
     open dmgFolder
     set dmgWindow to container window of dmgFolder
     set current view of dmgWindow to icon view
-    set toolbar visible of dmgWindow to false
-    set statusbar visible of dmgWindow to false
-    set sidebar width of dmgWindow to 0
+    try
+        set toolbar visible of dmgWindow to false
+    end try
+    try
+        set statusbar visible of dmgWindow to false
+    end try
+    try
+        set sidebar width of dmgWindow to 0
+    end try
     set bounds of dmgWindow to {180, 120, 900, 580}
     set theOptions to icon view options of dmgWindow
     set arrangement of theOptions to not arranged
