@@ -31,6 +31,9 @@ VERSION=$(defaults read "$BUNDLE/Contents/Info" CFBundleShortVersionString)
 DMG_NAME="cmd-${VERSION}.dmg"
 DMG_PATH="$REPO_ROOT/build/$DMG_NAME"
 VOL_NAME="cmd"
+RW_DMG="$REPO_ROOT/build/${VOL_NAME}-rw.dmg"
+MOUNT_DIR="$REPO_ROOT/build/dmg-mount"
+BACKGROUND_NAME="dmg-background.png"
 
 echo "==> Building DMG for cmd ${VERSION}..."
 echo "    Bundle: $BUNDLE"
@@ -55,19 +58,83 @@ echo "    Creating /Applications symlink..."
 ln -s /Applications "$STAGING/Applications"
 
 # ---------------------------------------------------------------------------
-# 6. Create the DMG
+# 6. Add the custom Finder background
 # ---------------------------------------------------------------------------
-echo "==> Creating DMG with hdiutil..."
+echo "    Rendering premium DMG background..."
+mkdir -p "$STAGING/.background"
+"$SCRIPT_DIR/make-dmg-background.swift" "$STAGING/.background/$BACKGROUND_NAME"
+chflags hidden "$STAGING/.background" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# 7. Create a read-write DMG so Finder layout metadata can be saved
+# ---------------------------------------------------------------------------
+echo "==> Creating styled read-write DMG..."
+rm -f "$RW_DMG" "$DMG_PATH"
+rm -rf "$MOUNT_DIR"
+mkdir -p "$MOUNT_DIR"
 hdiutil create \
     -volname "$VOL_NAME" \
     -srcfolder "$STAGING" \
     -ov \
-    -format UDZO \
-    -imagekey zlib-level=9 \
-    "$DMG_PATH"
+    -format UDRW \
+    -fs HFS+ \
+    "$RW_DMG" >/dev/null
+
+echo "==> Mounting DMG to apply Finder layout..."
+hdiutil attach "$RW_DMG" \
+    -readwrite \
+    -noverify \
+    -noautoopen \
+    -mountpoint "$MOUNT_DIR" >/dev/null
+
+cleanup_mount() {
+    hdiutil detach "$MOUNT_DIR" -quiet 2>/dev/null || true
+    rm -rf "$MOUNT_DIR"
+    rm -rf "$STAGING"
+}
+trap cleanup_mount EXIT
+
+echo "==> Styling Finder window..."
+osascript <<OSA
+tell application "Finder"
+    set dmgFolder to POSIX file "$MOUNT_DIR" as alias
+    set backgroundImage to POSIX file "$MOUNT_DIR/.background/$BACKGROUND_NAME" as alias
+    open dmgFolder
+    set dmgWindow to container window of dmgFolder
+    set current view of dmgWindow to icon view
+    set toolbar visible of dmgWindow to false
+    set statusbar visible of dmgWindow to false
+    set sidebar width of dmgWindow to 0
+    set bounds of dmgWindow to {180, 120, 900, 580}
+    set theOptions to icon view options of dmgWindow
+    set arrangement of theOptions to not arranged
+    set icon size of theOptions to 96
+    set background picture of theOptions to backgroundImage
+    set position of item "cmd.app" of dmgFolder to {180, 230}
+    set position of item "Applications" of dmgFolder to {540, 230}
+    close dmgWindow
+    open dmgFolder
+    update dmgFolder without registering applications
+    delay 1
+end tell
+OSA
+
+sync
+hdiutil detach "$MOUNT_DIR" -quiet
+rm -rf "$MOUNT_DIR"
 
 # ---------------------------------------------------------------------------
-# 7. Optionally sign the DMG
+# 8. Convert to a compressed distributable DMG
+# ---------------------------------------------------------------------------
+echo "==> Compressing final DMG..."
+hdiutil convert "$RW_DMG" \
+    -format UDZO \
+    -imagekey zlib-level=9 \
+    -o "$DMG_PATH" >/dev/null
+rm -f "$RW_DMG"
+
+# ---------------------------------------------------------------------------
+# 9. Optionally sign the DMG
 # ---------------------------------------------------------------------------
 if [[ "$SIGN_DMG" == "1" ]]; then
     if [[ -z "$SIGNING_IDENTITY" ]]; then
@@ -89,18 +156,19 @@ if [[ "$SIGN_DMG" == "1" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 8. Clean up staging
+# 10. Clean up staging
 # ---------------------------------------------------------------------------
 rm -rf "$STAGING"
+trap - EXIT
 
 # ---------------------------------------------------------------------------
-# 9. Verify disk image
+# 11. Verify disk image
 # ---------------------------------------------------------------------------
 echo "==> Verifying DMG checksum..."
 hdiutil verify "$DMG_PATH"
 
 # ---------------------------------------------------------------------------
-# 10. Report
+# 12. Report
 # ---------------------------------------------------------------------------
 echo ""
 echo "DMG ready: $DMG_PATH"
@@ -109,7 +177,7 @@ echo "SHA-256:"
 shasum -a 256 "$DMG_PATH"
 
 # ---------------------------------------------------------------------------
-# 11. Prompt to verify
+# 13. Prompt to verify
 # ---------------------------------------------------------------------------
 echo ""
 echo "To verify the DMG, run:"
