@@ -91,9 +91,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             eventTapIsRunning = true
             isPollingForAccessibility = false
         } catch {
-            // Tap creation failed. Reset the stale TCC entry so macOS will
-            // register the current binary's signature on the next grant.
-            resetAccessibilityEntry()
+            DiagnosticsLogbook.shared.record(
+                "event_tap_start_failed",
+                category: "event_tap",
+                details: ["error": error.localizedDescription]
+            )
             showAccessibilityPrompt()
             pollForAccessibility()
         }
@@ -138,19 +140,4 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// Wipe TCC entries for the current and legacy bundle IDs.
-    ///
-    /// This is necessary after every rebuild when using ad-hoc signing:
-    /// each new binary gets a fresh code-signature hash, so macOS treats it
-    /// as a different identity. The old "allow" entry no longer covers the new
-    /// binary. Resetting forces macOS to re-prompt and register the current hash.
-    private func resetAccessibilityEntry() {
-        ([AppStoragePaths.bundleIdentifier] + AppStoragePaths.legacyBundleIdentifiers).forEach { identifier in
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
-            task.arguments = ["reset", "Accessibility", identifier]
-            try? task.run()
-            task.waitUntilExit()
-        }
-    }
 }

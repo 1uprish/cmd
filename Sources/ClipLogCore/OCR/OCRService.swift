@@ -2,11 +2,22 @@ import Vision
 import AppKit
 import Foundation
 
-public final class OCRService: Sendable {
+public actor OCRService {
     public static let shared = OCRService()
+    private static let maxBackgroundOCRBytes = 6 * 1024 * 1024
+
     private init() {}
 
     public func recognizeText(in imageURL: URL) async -> String? {
+        guard imageIsSmallEnoughForBackgroundOCR(imageURL) else {
+            DiagnosticsLogbook.shared.record(
+                "ocr_skipped",
+                category: "performance",
+                details: ["reason": "image_too_large"]
+            )
+            return nil
+        }
+
         var proposedRect = CGRect.zero
         guard
             let nsImage = NSImage(contentsOf: imageURL),
@@ -15,8 +26,8 @@ public final class OCRService: Sendable {
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
+        request.recognitionLevel = .fast
+        request.usesLanguageCorrection = false
 
         do {
             try handler.perform([request])
@@ -45,6 +56,11 @@ public final class OCRService: Sendable {
                 userInfo: ["entryID": entryID.uuidString]
             )
         }
+    }
+
+    private func imageIsSmallEnoughForBackgroundOCR(_ imageURL: URL) -> Bool {
+        let values = try? imageURL.resourceValues(forKeys: [.fileSizeKey])
+        return (values?.fileSize ?? 0) <= Self.maxBackgroundOCRBytes
     }
 }
 

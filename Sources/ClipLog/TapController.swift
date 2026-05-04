@@ -24,6 +24,7 @@ final class TapController {
             // Apply user settings to live objects.
             let settings = ClipLogSettings.shared
             pasteboardWatcher.updateUserExcludedBundles(Set(settings.userExcludedBundles))
+            pasteboardWatcher.updateImageOCREnabled(false)
             eventTap.updateHoldThreshold(TimeInterval(settings.holdThresholdMs) / 1000.0)
             observeSettings(settings)
 

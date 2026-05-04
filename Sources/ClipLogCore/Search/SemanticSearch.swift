@@ -6,16 +6,20 @@ import Foundation
 // On-device semantic similarity using Apple's NLEmbedding (512-dim sentence vectors).
 // No network calls, no model downloads — ships with every Mac via NaturalLanguage.framework.
 
-public final class SemanticSearch: Sendable {
+public final class SemanticSearch: @unchecked Sendable {
     public static let shared = SemanticSearch()
-    private init() {}
+    private let sentenceEmbedding: NLEmbedding?
+
+    private init() {
+        sentenceEmbedding = NLEmbedding.sentenceEmbedding(for: .english)
+    }
 
     // MARK: - Embedding
 
     /// Embed a string into a 512-dim float array.
     /// Returns nil if NLEmbedding is unavailable on this OS/language combo.
     public func embed(_ text: String) -> [Double]? {
-        guard let embedding = NLEmbedding.sentenceEmbedding(for: .english) else { return nil }
+        guard let embedding = sentenceEmbedding else { return nil }
         // NL works best under 512 chars; truncate longer strings.
         let truncated = String(text.prefix(512))
         return embedding.vector(for: truncated)

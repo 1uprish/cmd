@@ -93,7 +93,7 @@ public final class ClipLogSettings: ObservableObject {
             Keys.retentionDays:       30,
             Keys.sensitiveRetentionMinutes: 60,
             Keys.userExcludedBundles: [String](),
-            Keys.launchAtLogin:       true,
+            Keys.launchAtLogin:       false,
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
@@ -151,8 +151,13 @@ public enum LaunchAtLoginManager {
     /// Sync the LaunchAgent so it always points to the current bundle path.
     /// Call this on every app launch so the plist stays current if the app is moved.
     public static func syncIfNeeded() {
-        // Only sync when the preference says we should be registered.
-        guard UserDefaults.standard.bool(forKey: "launchAtLogin") else { return }
+        // Keep the persisted LaunchAgent aligned with the preference. This also
+        // cleans up beta builds that created a login item before the default was
+        // changed to off.
+        guard UserDefaults.standard.bool(forKey: "launchAtLogin") else {
+            remove()
+            return
+        }
         install(reloadLoadedAgent: false)
     }
 

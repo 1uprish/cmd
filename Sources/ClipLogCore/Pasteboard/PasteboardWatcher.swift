@@ -6,7 +6,7 @@ import os
 
 // MARK: - PasteboardWatcher
 //
-// Polls NSPasteboard.changeCount every 200ms.
+// Polls NSPasteboard.changeCount on a throttled interval.
 // On change: classify, hash, check sensitivity, emit ClipEntry.
 //
 // Sensitive handling:
@@ -153,10 +153,17 @@ public final class PasteboardWatcher: @unchecked Sendable {
     ]
 
     public var userExcludedBundles: Set<String> = []
+    private var imageOCREnabled = false
 
     public func updateUserExcludedBundles(_ bundles: Set<String>) {
         queue.async {
             self.userExcludedBundles = bundles
+        }
+    }
+
+    public func updateImageOCREnabled(_ enabled: Bool) {
+        queue.async {
+            self.imageOCREnabled = enabled
         }
     }
 
@@ -239,7 +246,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             }
         }
 
-        if entry.contentType == .image, let mediaPath = entry.mediaPath {
+        if imageOCREnabled, entry.contentType == .image, let mediaPath = entry.mediaPath {
             let mediaDir = AppStoragePaths.mediaDirectory
             let imageURL = mediaDir.appendingPathComponent(mediaPath)
             let entryID  = entry.id
@@ -429,7 +436,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             }
         }
 
-        if entry.contentType == .image, let mediaPath = entry.mediaPath {
+        if imageOCREnabled, entry.contentType == .image, let mediaPath = entry.mediaPath {
             let mediaDir = AppStoragePaths.mediaDirectory
             let imageURL = mediaDir.appendingPathComponent(mediaPath)
             let entryID = entry.id
