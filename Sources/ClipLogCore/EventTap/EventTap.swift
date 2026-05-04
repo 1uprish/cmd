@@ -527,9 +527,21 @@ private func eventTapCallback(
         return nil
     }
 
+    let startedAt = Date()
     var result: CGEvent? = event
     tapObj.tapQueue.sync {
         result = tapObj.handle(event: event, type: type)
+    }
+    let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+    if elapsedMs >= 16 {
+        DiagnosticsLogbook.shared.record(
+            "slow_event_tap_callback",
+            category: "performance",
+            details: [
+                "durationMs": "\(elapsedMs)",
+                "eventType": "\(type.rawValue)"
+            ]
+        )
     }
 
     if let r = result {

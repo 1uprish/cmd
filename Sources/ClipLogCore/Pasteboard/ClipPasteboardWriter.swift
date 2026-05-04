@@ -20,10 +20,23 @@ public enum ClipPasteboardWriter {
     private static let payloadDecoder = PropertyListDecoder()
 
     public static func write(_ entry: ClipEntry, to pasteboard: NSPasteboard = .general) {
+        let startedAt = Date()
         pasteboard.clearContents()
         let writers = pasteboardWriters(for: entry)
         if !writers.isEmpty {
             pasteboard.writeObjects(writers)
+        }
+        let elapsedMs = milliseconds(since: startedAt)
+        if elapsedMs >= 250 {
+            DiagnosticsLogbook.shared.record(
+                "slow_clipboard_write",
+                category: "performance",
+                details: [
+                    "durationMs": "\(elapsedMs)",
+                    "entryType": entry.contentType.rawValue,
+                    "writerCount": "\(writers.count)"
+                ]
+            )
         }
     }
 
@@ -185,6 +198,10 @@ public enum ClipPasteboardWriter {
         } catch {
             return nil
         }
+    }
+
+    private static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 }
 

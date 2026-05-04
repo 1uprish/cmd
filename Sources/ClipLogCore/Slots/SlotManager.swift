@@ -14,8 +14,26 @@ public final class SlotManager: @unchecked Sendable {
 
     public func ingest(_ entry: ClipEntry) {
         queue.sync {
+            let startedAt = Date()
+            let insertStartedAt = Date()
             try? store.insert(entry)
+            let insertMs = Self.milliseconds(since: insertStartedAt)
+            let recentStartedAt = Date()
             _slots = (try? store.recent(limit: 5)) ?? _slots
+            let recentMs = Self.milliseconds(since: recentStartedAt)
+            let totalMs = Self.milliseconds(since: startedAt)
+            if totalMs >= 250 {
+                DiagnosticsLogbook.shared.record(
+                    "slow_slot_ingest",
+                    category: "performance",
+                    details: [
+                        "durationMs": "\(totalMs)",
+                        "insertMs": "\(insertMs)",
+                        "recentMs": "\(recentMs)",
+                        "entryType": entry.contentType.rawValue
+                    ]
+                )
+            }
         }
     }
 
@@ -66,5 +84,9 @@ public final class SlotManager: @unchecked Sendable {
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         keyUp?.flags = .maskCommand
         keyUp?.post(tap: .cgSessionEventTap)
+    }
+
+    private static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 }

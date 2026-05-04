@@ -191,13 +191,23 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     private func poll() {
         let startedAt = Date()
+        var entryType = "none"
+        var buildEntryMs = 0
+        var ingestMs = 0
+        var appendMs = 0
         defer {
             let elapsed = Date().timeIntervalSince(startedAt)
             if elapsed >= Self.slowPollThreshold {
                 DiagnosticsLogbook.shared.record(
                     "slow_pasteboard_poll",
                     category: "performance",
-                    details: ["durationMs": "\(Int(elapsed * 1000))"]
+                    details: [
+                        "durationMs": "\(Int(elapsed * 1000))",
+                        "entryType": entryType,
+                        "buildEntryMs": "\(buildEntryMs)",
+                        "ingestMs": "\(ingestMs)",
+                        "appendMs": "\(appendMs)"
+                    ]
                 )
             }
         }
@@ -224,18 +234,26 @@ public final class PasteboardWatcher: @unchecked Sendable {
         // pasteboard payload. Text fields receive the combined string; rich
         // targets can also receive the image objects.
         if appendSession != nil {
+            let appendStartedAt = Date()
             mergeCurrentPasteboardIntoAppendSession(pb)
+            appendMs = Self.milliseconds(since: appendStartedAt)
+            entryType = "append"
             return
         }
 
+        let buildStartedAt = Date()
         guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil) else { return }
+        buildEntryMs = Self.milliseconds(since: buildStartedAt)
+        entryType = entry.contentType.rawValue
 
         // Track the last plain-text content for potential future appends.
         if let str = pb.string(forType: .string) {
             lastClipString = str
         }
 
+        let ingestStartedAt = Date()
         onNewEntry?(entry)
+        ingestMs = Self.milliseconds(since: ingestStartedAt)
 
         // Embed text-based entries for semantic search (fire-and-forget).
         if [.text, .url, .code, .rich].contains(entry.contentType), !entry.isSensitive {
@@ -369,6 +387,24 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func writeAppendSession(_ session: AppendSession, to pb: NSPasteboard) {
+        let startedAt = Date()
+        defer {
+            let elapsedMs = Self.milliseconds(since: startedAt)
+            if elapsedMs >= 250 {
+                DiagnosticsLogbook.shared.record(
+                    "slow_append_pasteboard_write",
+                    category: "performance",
+                    details: [
+                        "durationMs": "\(elapsedMs)",
+                        "clipCount": "\(session.clips.count)",
+                        "imageCount": "\(session.imageCount)",
+                        "imageBytes": "\(session.imageByteCount)",
+                        "characters": "\(session.characterCount)"
+                    ]
+                )
+            }
+        }
+
         pb.clearContents()
 
         if session.hasText, session.hasImage,
@@ -532,7 +568,9 @@ public final class PasteboardWatcher: @unchecked Sendable {
             )
 
         case .image:
+            let imageStartedAt = Date()
             guard let originalData = imageData(from: pb) else { return nil }
+            let imageDataMs = Self.milliseconds(since: imageStartedAt)
             if originalData.count > Self.maxInlineImageBytes {
                 Self.logger.info("Skipped oversized image (\(originalData.count) bytes)")
                 DiagnosticsLogbook.shared.record(
@@ -556,7 +594,22 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 return nil
             }
 
+            let thumbnailStartedAt = Date()
             guard let thumbnailJPEG = makeThumbnail(from: originalData) else { return nil }
+            let thumbnailMs = Self.milliseconds(since: thumbnailStartedAt)
+            let totalMs = Self.milliseconds(since: imageStartedAt)
+            if totalMs >= 250 {
+                DiagnosticsLogbook.shared.record(
+                    "slow_image_capture",
+                    category: "performance",
+                    details: [
+                        "durationMs": "\(totalMs)",
+                        "imageDataMs": "\(imageDataMs)",
+                        "thumbnailMs": "\(thumbnailMs)",
+                        "bytes": "\(originalData.count)"
+                    ]
+                )
+            }
 
             return ClipEntry(
                 contentType: .image,
@@ -978,6 +1031,10 @@ public final class PasteboardWatcher: @unchecked Sendable {
         guard let cgImage = thumb.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
         let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
         return bitmapRep.representation(using: .jpeg, properties: [.compressionFactor: 0.7])
+    }
+
+    private static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 }
 
