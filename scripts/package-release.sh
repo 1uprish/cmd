@@ -27,7 +27,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUNDLE_PATH="$REPO_ROOT/build/cmd.app"
+BUNDLE_PATH="$REPO_ROOT/build/CMD.app"
 
 resolve_signing_identity() {
     if [[ -z "${SIGNING_IDENTITY:-}" ]]; then
@@ -97,12 +97,12 @@ BUILD="$(manifest_value CFBundleVersion)"
 
 SIGN_DMG=1 "$SCRIPT_DIR/build-dmg.sh"
 
-DMG_PATH="$REPO_ROOT/build/cmd-${VERSION}.dmg"
+DMG_PATH="$REPO_ROOT/build/CMD-${VERSION}.dmg"
 TARGET_PATH="$DMG_PATH" "$SCRIPT_DIR/notarise.sh"
 
-MANIFEST_PATH="$REPO_ROOT/build/cmd-${VERSION}-release-manifest.txt"
+MANIFEST_PATH="$REPO_ROOT/build/CMD-${VERSION}-release-manifest.txt"
 {
-    echo "cmd release manifest"
+    echo "CMD release manifest"
     echo "Generated: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
     echo "App:       $BUNDLE_PATH"
     echo "DMG:       $DMG_PATH"

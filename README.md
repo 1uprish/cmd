@@ -1,6 +1,6 @@
 # cmd
 
-`cmd` is a native macOS clipboard register. Copy normally, then hold `Cmd+V` to open a lightweight HUD beside the current text field and choose from recent clipboard items.
+`CMD` is a native macOS clipboard register. Copy normally, then hold `Cmd+V` to open a lightweight HUD beside the current text field and choose from recent clipboard items.
 
 The app is built for the everyday Mac flow: text, links, code, files, images, mixed clipboard payloads, append sessions, drag-and-drop, and quick paste without leaving the app you are already using.
 
@@ -40,7 +40,7 @@ For local testing without a Developer ID certificate:
 
 ```bash
 ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
-open build/cmd.app
+open build/CMD.app
 ```
 
 ## Build A DMG
@@ -53,7 +53,7 @@ ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
 The DMG is written to:
 
 ```text
-build/cmd-1.0.0.dmg
+build/CMD-1.0.0.dmg
 ```
 
 Ad-hoc DMGs are useful for local testing. For friends or public distribution, use a Developer ID Application certificate and notarize the release.
@@ -70,7 +70,7 @@ Ad-hoc DMGs are useful for local testing. For friends or public distribution, us
 3. Notarize:
 
    ```bash
-   TARGET_PATH="build/cmd.app" NOTARY_PROFILE=cmdNotary ./scripts/notarise.sh
+   TARGET_PATH="build/CMD.app" NOTARY_PROFILE=cmdNotary ./scripts/notarise.sh
    ```
 
 4. Package the release:
@@ -100,7 +100,7 @@ Tests/ClipLogTests/    unit tests for core behavior
 scripts/               release, DMG, notarization, and packaging scripts
 ```
 
-Internal module names still use `ClipLog` / `ClipLogCore` for source stability. The product-facing name is `cmd`.
+Internal module names still use `ClipLog` / `ClipLogCore` for source stability. The product-facing name is `CMD`.
 
 ## Development Notes
 

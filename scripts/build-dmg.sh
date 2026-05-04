@@ -11,7 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BUNDLE="$REPO_ROOT/build/cmd.app"
+BUNDLE="$REPO_ROOT/build/CMD.app"
 SIGN_DMG="${SIGN_DMG:-0}"
 SIGNING_IDENTITY="${SIGNING_IDENTITY:-}"
 
@@ -28,14 +28,14 @@ fi
 # 2. Variables
 # ---------------------------------------------------------------------------
 VERSION=$(defaults read "$BUNDLE/Contents/Info" CFBundleShortVersionString)
-DMG_NAME="cmd-${VERSION}.dmg"
+DMG_NAME="CMD-${VERSION}.dmg"
 DMG_PATH="$REPO_ROOT/build/$DMG_NAME"
-VOL_NAME="cmd"
+VOL_NAME="CMD"
 RW_DMG="$REPO_ROOT/build/${VOL_NAME}-rw.dmg"
 MOUNT_DIR="$REPO_ROOT/build/dmg-mount"
 BACKGROUND_NAME="dmg-background.png"
 
-echo "==> Building DMG for cmd ${VERSION}..."
+echo "==> Building DMG for CMD ${VERSION}..."
 echo "    Bundle: $BUNDLE"
 echo "    Output: $DMG_PATH"
 
@@ -48,8 +48,8 @@ echo "    Staging dir: $STAGING"
 # ---------------------------------------------------------------------------
 # 4. Copy .app into staging
 # ---------------------------------------------------------------------------
-echo "    Copying cmd.app into staging..."
-ditto "$BUNDLE" "$STAGING/cmd.app"
+echo "    Copying CMD.app into staging..."
+ditto "$BUNDLE" "$STAGING/CMD.app"
 
 # ---------------------------------------------------------------------------
 # 5. Symlink /Applications
@@ -116,7 +116,7 @@ tell application "Finder"
     set arrangement of theOptions to not arranged
     set icon size of theOptions to 96
     set background picture of theOptions to backgroundImage
-    set position of item "cmd.app" of dmgFolder to {180, 230}
+    set position of item "CMD.app" of dmgFolder to {180, 230}
     set position of item "Applications" of dmgFolder to {540, 230}
     close dmgWindow
     open dmgFolder

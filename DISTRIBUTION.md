@@ -18,15 +18,15 @@ ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
 ./scripts/build-dmg.sh
 ```
 
-### Free friends beta
+### Free local sharing build
 
 Use this when you do not have the $99/year Apple Developer Program yet. It
-creates an ad-hoc signed DMG with a `READ ME FIRST.txt` inside the disk image.
-This is not a seamless public release, but it is the most honest free path for
-trusted friends.
+creates an ad-hoc signed DMG. This is not a seamless public release, but it is
+the most honest free path for trusted friends.
 
 ```bash
-ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/package-friends-beta.sh
+ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
+./scripts/build-dmg.sh
 ```
 
 Your friends may need to right-click the app and choose Open, then approve it in
@@ -153,9 +153,9 @@ Follow these steps in order for every release.
    ```
 
    This produces:
-   - `build/cmd.app`
-   - `build/cmd-X.Y.Z.dmg`
-   - `build/cmd-X.Y.Z-release-manifest.txt`
+   - `build/CMD.app`
+   - `build/CMD-X.Y.Z.dmg`
+   - `build/CMD-X.Y.Z-release-manifest.txt`
 
 Manual release steps are still available if you need to debug one stage:
 
@@ -169,7 +169,7 @@ Manual release steps are still available if you need to debug one stage:
 4. **Notarise** the app:
 
    ```bash
-   TARGET_PATH="build/cmd.app" \
+   TARGET_PATH="build/CMD.app" \
    NOTARY_PROFILE=cmdNotary \
      ./scripts/notarise.sh
    ```
@@ -182,12 +182,12 @@ Manual release steps are still available if you need to debug one stage:
    ./scripts/build-dmg.sh
    ```
 
-   This produces `build/cmd-X.Y.Z.dmg`.
+   This produces `build/CMD-X.Y.Z.dmg`.
 
 6. **Notarise the DMG**:
 
    ```bash
-   TARGET_PATH="build/cmd-X.Y.Z.dmg" \
+   TARGET_PATH="build/CMD-X.Y.Z.dmg" \
    NOTARY_PROFILE=cmdNotary \
    ./scripts/notarise.sh
    ```

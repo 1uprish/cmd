@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# notarise.sh — Notarise and staple cmd.app or cmd.dmg for direct distribution.
+# notarise.sh — Notarise and staple CMD.app or CMD.dmg for direct distribution.
 #
 # Required:
 #   TARGET_PATH      Signed .app bundle or .dmg to notarise.
@@ -14,11 +14,11 @@
 #   APP_PASSWORD     App-specific password generated at appleid.apple.com
 #
 # Usage:
-#   TARGET_PATH=./build/cmd.app \
+#   TARGET_PATH=./build/CMD.app \
 #   NOTARY_PROFILE=cmdNotary \
 #   ./scripts/notarise.sh
 #
-#   TARGET_PATH=./build/cmd.app \
+#   TARGET_PATH=./build/CMD.app \
 #   APPLE_ID=you@example.com \
 #   TEAM_ID=XXXXXXXXXX \
 #   APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \

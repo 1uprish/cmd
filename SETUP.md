@@ -1,12 +1,12 @@
 # Setup
 
-This guide covers installing, building, and preparing `cmd` for local development or a friends beta.
+This guide covers installing, building, and preparing `CMD` for local development or direct distribution.
 
 ## Install From A DMG
 
 1. Open the DMG.
-2. Drag `cmd.app` into `Applications`.
-3. Open `cmd.app`.
+2. Drag `CMD.app` into `Applications`.
+3. Open `CMD.app`.
 4. If macOS warns that the app cannot be verified, open **System Settings -> Privacy & Security**, scroll to the blocked app message, and choose **Open Anyway**.
 5. Grant Accessibility permission when prompted.
 
@@ -50,7 +50,7 @@ Build a local app bundle:
 
 ```bash
 ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
-open build/cmd.app
+open build/CMD.app
 ```
 
 Build a local DMG:
@@ -89,7 +89,7 @@ If the HUD does not open:
 1. Quit `cmd`.
 2. Open **System Settings -> Privacy & Security -> Accessibility**.
 3. Remove old `cmd` entries if they are stale.
-4. Reopen `build/cmd.app`.
+4. Reopen `build/CMD.app`.
 5. Grant Accessibility again.
 
 The app also attempts to reset stale legacy entries when it detects a trusted-but-unusable event tap.
@@ -143,7 +143,7 @@ SIGNING_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./scripts/build-
 Then notarize:
 
 ```bash
-TARGET_PATH="build/cmd.app" NOTARY_PROFILE=cmdNotary ./scripts/notarise.sh
+TARGET_PATH="build/CMD.app" NOTARY_PROFILE=cmdNotary ./scripts/notarise.sh
 ```
 
 Package a full release:
@@ -160,14 +160,14 @@ Without Developer ID signing and notarization, other Macs may show Gatekeeper wa
 
 - Confirm Accessibility permission is enabled.
 - Quit and relaunch `cmd`.
-- Rebuild and reopen `build/cmd.app`.
+- Rebuild and reopen `build/CMD.app`.
 - Check diagnostics for event tap start or disabled events.
 
 ### App Feels Slow
 
 - Open the diagnostics log and check for `main_thread_stall` or `slow_pasteboard_poll`.
 - Quit old copies of `cmd` before launching a new build.
-- Verify only one `cmd.app` instance is running.
+- Verify only one `CMD.app` instance is running.
 
 ### Images Do Not Paste Into A Target App
 

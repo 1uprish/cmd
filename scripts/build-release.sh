@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# build-release.sh — Build, assemble, and sign a release cmd.app bundle.
+# build-release.sh — Build, assemble, and sign a release CMD.app bundle.
 #
 # Optional environment variables:
 #   SIGNING_IDENTITY  Exact Developer ID Application identity.
@@ -27,7 +27,7 @@ SWIFT_BUILD_SCRATCH_PATH="${SWIFT_BUILD_SCRATCH_PATH:-}"
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
-BUNDLE_PATH="$REPO_ROOT/build/cmd.app"
+BUNDLE_PATH="$REPO_ROOT/build/CMD.app"
 CONTENTS="$BUNDLE_PATH/Contents"
 MACOS_DIR="$CONTENTS/MacOS"
 RESOURCES_DIR="$CONTENTS/Resources"
@@ -126,8 +126,11 @@ echo "==> Assembling app bundle at $BUNDLE_PATH ..."
 rm -rf "$BUNDLE_PATH"
 # Remove stale pre-rename bundles so packaging can never pick up an old,
 # structurally invalid app by accident.
+rm -rf "$REPO_ROOT/build/cmd.app"
 rm -rf "$REPO_ROOT/build/CopyPasta.app"
 rm -rf "$REPO_ROOT/build/ClipLog.app"
+rm -f "$REPO_ROOT/build"/cmd-*.dmg
+rm -f "$REPO_ROOT/build"/cmd-*-release-manifest.txt
 rm -f "$REPO_ROOT/build"/CopyPasta-*.dmg
 rm -f "$REPO_ROOT/build"/ClipLog-*.dmg
 mkdir -p "$MACOS_DIR"

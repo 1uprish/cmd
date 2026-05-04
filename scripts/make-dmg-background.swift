@@ -44,7 +44,7 @@ let titleAttrs: [NSAttributedString.Key: Any] = [
     .foregroundColor: NSColor(calibratedWhite: 0.96, alpha: 1),
     .kern: 0
 ]
-"Install cmd".draw(
+"Install CMD".draw(
     in: NSRect(x: 0, y: 362, width: size.width, height: 40),
     withAttributes: titleAttrs.aligned(.center)
 )
@@ -110,7 +110,7 @@ let footerAttrs: [NSAttributedString.Key: Any] = [
     .font: NSFont.systemFont(ofSize: 12, weight: .regular),
     .foregroundColor: NSColor(calibratedWhite: 0.58, alpha: 0.82),
 ]
-"Then open cmd from Applications and grant Accessibility when prompted.".draw(
+"Then open CMD from Applications and grant Accessibility when prompted.".draw(
     in: NSRect(x: 0, y: 72, width: size.width, height: 18),
     withAttributes: footerAttrs.aligned(.center)
 )

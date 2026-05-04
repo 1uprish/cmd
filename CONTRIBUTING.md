@@ -18,7 +18,7 @@ Build the packaged app for manual verification:
 
 ```bash
 ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
-open build/cmd.app
+open build/CMD.app
 ```
 
 ## Quality Bar
@@ -28,7 +28,7 @@ open build/cmd.app
 - Keep diagnostics operational: event names, durations, counts, state changes.
 - Preserve backward compatibility for stored clips and media.
 - Verify image, text, rich, file, and append flows after pasteboard changes.
-- Verify the packaged `build/cmd.app`, not only `swift run`.
+- Verify the packaged `build/CMD.app`, not only `swift run`.
 
 ## Manual QA Checklist
 
