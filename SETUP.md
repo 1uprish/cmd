@@ -110,6 +110,12 @@ The file is stored at:
 
 Diagnostics are JSON Lines and should not contain clipboard contents. They record operational events such as launch, event tap start/stop, append sessions, slow pasteboard polls, and main-thread stalls.
 
+To identify the exact slow path after reproducing lag:
+
+```bash
+./scripts/analyze-diagnostics.swift
+```
+
 ## Local Data
 
 Runtime data:
