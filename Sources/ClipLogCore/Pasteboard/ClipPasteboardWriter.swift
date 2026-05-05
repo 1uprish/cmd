@@ -79,6 +79,25 @@ public enum ClipPasteboardWriter {
         pasteboardWriters(for: entry).first ?? plainTextItem(entry.previewText)
     }
 
+    public static func dragPasteboardWriters(for entry: ClipEntry) -> [NSPasteboardWriting] {
+        switch entry.contentType {
+        case .image:
+            guard let item = lazyImageDragItem(for: entry) else { return [] }
+            return [item]
+        case .rich:
+            guard let item = lazyRichDragItem(for: entry) else {
+                return [plainTextItem(String(data: entry.contentData, encoding: .utf8) ?? entry.previewText)]
+            }
+            return [item]
+        default:
+            return pasteboardWriters(for: entry)
+        }
+    }
+
+    public static func primaryDragPasteboardWriter(for entry: ClipEntry) -> NSPasteboardWriting {
+        dragPasteboardWriters(for: entry).first ?? plainTextItem(entry.previewText)
+    }
+
     public static func originalImageData(for entry: ClipEntry) -> Data? {
         guard entry.contentType == .image else { return nil }
         if let mediaPath = entry.mediaPath {
@@ -145,6 +164,30 @@ public enum ClipPasteboardWriter {
         return item.types.isEmpty ? nil : item
     }
 
+    private static func lazyImageDragItem(for entry: ClipEntry) -> NSPasteboardItem? {
+        guard entry.contentType == .image else { return nil }
+        let provider = LazyImageDragProvider(entry: entry)
+        return LazyPasteboardItem(provider: provider, types: [
+            .png,
+            NSPasteboard.PasteboardType("public.png"),
+            .tiff,
+            .fileURL,
+            NSPasteboard.PasteboardType("public.file-url")
+        ])
+    }
+
+    private static func lazyRichDragItem(for entry: ClipEntry) -> NSPasteboardItem? {
+        guard entry.contentType == .rich else { return nil }
+        let provider = LazyRichDragProvider(entry: entry)
+        return LazyPasteboardItem(provider: provider, types: [
+            .string,
+            .html,
+            .rtfd,
+            .flatRTFD,
+            .rtf
+        ])
+    }
+
     private static func richItem(for entry: ClipEntry) -> NSPasteboardItem? {
         let payload: RichPasteboardPayload?
         if let mediaPath = entry.mediaPath {
@@ -202,6 +245,187 @@ public enum ClipPasteboardWriter {
 
     private static func milliseconds(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
+    }
+}
+
+private final class LazyPasteboardItem: NSPasteboardItem {
+    private let retainedProvider: NSPasteboardItemDataProvider
+
+    init(provider: NSPasteboardItemDataProvider, types: [NSPasteboard.PasteboardType]) {
+        retainedProvider = provider
+        super.init()
+        setDataProvider(provider, forTypes: types)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError()
+    }
+
+    @available(*, unavailable)
+    required init?(pasteboardPropertyList propertyList: Any, ofType type: NSPasteboard.PasteboardType) {
+        fatalError()
+    }
+}
+
+private final class LazyImageDragProvider: NSObject, NSPasteboardItemDataProvider {
+    private let entry: ClipEntry
+    private var cachedOriginalData: Data?
+    private var cachedPNGData: Data?
+    private var cachedTIFFData: Data?
+    private var cachedFileURL: URL?
+
+    init(entry: ClipEntry) {
+        self.entry = entry
+    }
+
+    func pasteboard(
+        _ pasteboard: NSPasteboard?,
+        item: NSPasteboardItem,
+        provideDataForType type: NSPasteboard.PasteboardType
+    ) {
+        let startedAt = Date()
+        defer {
+            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            if elapsedMs >= 250 {
+                DiagnosticsLogbook.shared.record(
+                    "slow_drag_payload_materialize",
+                    category: "performance",
+                    details: [
+                        "durationMs": "\(elapsedMs)",
+                        "entryType": entry.contentType.rawValue,
+                        "pasteboardType": type.rawValue
+                    ]
+                )
+            }
+        }
+
+        if type == .png || type.rawValue == "public.png" {
+            guard let data = pngData() else { return }
+            item.setData(data, forType: type)
+            return
+        }
+
+        if type == .tiff {
+            guard let data = tiffData() else { return }
+            item.setData(data, forType: type)
+            return
+        }
+
+        if type == .fileURL || type.rawValue == "public.file-url" {
+            guard let url = temporaryFileURL() else { return }
+            item.setString(url.absoluteString, forType: type)
+        }
+    }
+
+    private func originalData() -> Data? {
+        if let cachedOriginalData { return cachedOriginalData }
+        let data = ClipPasteboardWriter.originalImageData(for: entry)
+        cachedOriginalData = data
+        return data
+    }
+
+    private func pngData() -> Data? {
+        if let cachedPNGData { return cachedPNGData }
+        guard let data = originalData() else { return nil }
+        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
+            cachedPNGData = data
+            return data
+        }
+        if let bitmap = NSBitmapImageRep(data: data),
+           let png = bitmap.representation(using: .png, properties: [:]) {
+            cachedPNGData = png
+            return png
+        }
+        guard let image = NSImage(data: data),
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:])
+        else { return nil }
+        cachedPNGData = png
+        return png
+    }
+
+    private func tiffData() -> Data? {
+        if let cachedTIFFData { return cachedTIFFData }
+        guard let data = originalData(), let image = NSImage(data: data) else { return nil }
+        let tiff = image.tiffRepresentation
+        cachedTIFFData = tiff
+        return tiff
+    }
+
+    private func temporaryFileURL() -> URL? {
+        if let cachedFileURL { return cachedFileURL }
+        guard let data = pngData() else { return nil }
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmdDragImages", isDirectory: true)
+        let fileURL = directory.appendingPathComponent("\(entry.id.uuidString).png")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: fileURL, options: .atomic)
+            cachedFileURL = fileURL
+            return fileURL
+        } catch {
+            return nil
+        }
+    }
+}
+
+private final class LazyRichDragProvider: NSObject, NSPasteboardItemDataProvider {
+    private let entry: ClipEntry
+    private var cachedPayload: RichPasteboardPayload?
+
+    init(entry: ClipEntry) {
+        self.entry = entry
+    }
+
+    func pasteboard(
+        _ pasteboard: NSPasteboard?,
+        item: NSPasteboardItem,
+        provideDataForType type: NSPasteboard.PasteboardType
+    ) {
+        let startedAt = Date()
+        defer {
+            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            if elapsedMs >= 250 {
+                DiagnosticsLogbook.shared.record(
+                    "slow_drag_payload_materialize",
+                    category: "performance",
+                    details: [
+                        "durationMs": "\(elapsedMs)",
+                        "entryType": entry.contentType.rawValue,
+                        "pasteboardType": type.rawValue
+                    ]
+                )
+            }
+        }
+
+        guard let payload = richPayload() else { return }
+        switch type {
+        case .string:
+            item.setString(payload.plainText, forType: type)
+        case .html:
+            if let html = payload.html { item.setString(html, forType: type) }
+        case .rtfd, .flatRTFD:
+            if let rtfd = payload.rtfd { item.setData(rtfd, forType: type) }
+        case .rtf:
+            if let rtf = payload.rtf { item.setData(rtf, forType: type) }
+        default:
+            break
+        }
+    }
+
+    private func richPayload() -> RichPasteboardPayload? {
+        if let cachedPayload { return cachedPayload }
+        let payload: RichPasteboardPayload?
+        if let mediaPath = entry.mediaPath {
+            let url = AppStoragePaths.mediaDirectory.appendingPathComponent(mediaPath)
+            payload = (try? Data(contentsOf: url)).flatMap(ClipPasteboardWriter.decodeRichPayload)
+        } else {
+            payload = ClipPasteboardWriter.decodeRichPayload(entry.contentData)
+        }
+        cachedPayload = payload
+        return payload
     }
 }
 

@@ -690,7 +690,7 @@ extension ClipBookCardItem: NSDraggingSource {
 
     func beginDrag(from event: NSEvent) {
         guard let entry else { return }
-        let writers = ClipPasteboardWriter.pasteboardWriters(for: entry)
+        let writers = ClipPasteboardWriter.dragPasteboardWriters(for: entry)
         guard !writers.isEmpty else { return }
         let image = view.snapshot()
 

@@ -402,7 +402,7 @@ final class HUDSlotView: NSView {
             cachedWriter   = item
             cachedFileURLs = nil
         } else {
-            cachedWriter   = ClipPasteboardWriter.primaryPasteboardWriter(for: entry)
+            cachedWriter   = ClipPasteboardWriter.primaryDragPasteboardWriter(for: entry)
             cachedFileURLs = nil
         }
         // Build the drag image respecting the current appearance.

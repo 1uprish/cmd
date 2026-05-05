@@ -1711,7 +1711,7 @@ private final class HUDRowView: NSView {
     }
 
     private func pasteboardWriters(for entry: ClipEntry) -> [NSPasteboardWriting] {
-        ClipPasteboardWriter.pasteboardWriters(for: entry)
+        ClipPasteboardWriter.dragPasteboardWriters(for: entry)
     }
 
     private func previewText(for entry: ClipEntry) -> String {
