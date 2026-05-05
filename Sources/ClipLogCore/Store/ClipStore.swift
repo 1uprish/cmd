@@ -19,11 +19,24 @@ public final class ClipStore: @unchecked Sendable {
         )
 
         let dbURL = appSupport.appendingPathComponent("clips.db")
-        db = try DatabaseQueue(path: dbURL.path)
 
         encryptionKey = try Self.loadOrCreateEncryptionKey()
 
-        try Self.runMigrations(on: db)
+        do {
+            let queue = try DatabaseQueue(path: dbURL.path)
+            try Self.runMigrations(on: queue)
+            db = queue
+        } catch {
+            DiagnosticsLogbook.shared.record(
+                "store_open_recovered",
+                category: "storage",
+                details: ["error": String(describing: error)]
+            )
+            Self.quarantineDatabase(reason: "open_or_migration_failed")
+            let queue = try DatabaseQueue(path: dbURL.path)
+            try Self.runMigrations(on: queue)
+            db = queue
+        }
     }
 
     // Testable init — bypasses Keychain and the default on-disk path so unit
@@ -327,14 +340,47 @@ public final class ClipStore: @unchecked Sendable {
     /// Remove the on-disk database so stale data encrypted with a now-lost key
     /// does not surface as corrupt entries.
     private static func wipeDatabase() {
+        removeDatabaseFiles()
+    }
+
+    private static func quarantineDatabase(reason: String) {
+        let appSupport = AppStoragePaths.applicationSupportDirectory
+        let dbURL = appSupport.appendingPathComponent("clips.db")
+        let timestamp = ISO8601DateFormatter()
+            .string(from: Date())
+            .replacingOccurrences(of: ":", with: "-")
+        let quarantineDirectory = appSupport
+            .appendingPathComponent("Recovered Databases", isDirectory: true)
+            .appendingPathComponent("\(timestamp)-\(reason)", isDirectory: true)
+
+        try? FileManager.default.createDirectory(
+            at: quarantineDirectory,
+            withIntermediateDirectories: true
+        )
+
+        for url in databaseFileURLs(for: dbURL) where FileManager.default.fileExists(atPath: url.path) {
+            let destination = quarantineDirectory.appendingPathComponent(url.lastPathComponent)
+            try? FileManager.default.moveItem(at: url, to: destination)
+        }
+    }
+
+    private static func removeDatabaseFiles() {
         let appSupport = AppStoragePaths.applicationSupportDirectory
 
         let dbURL = appSupport.appendingPathComponent("clips.db")
-        try? FileManager.default.removeItem(at: dbURL)
+        for url in databaseFileURLs(for: dbURL) {
+            try? FileManager.default.removeItem(at: url)
+        }
+    }
 
-        // Also remove WAL / SHM side-files if present.
-        try? FileManager.default.removeItem(at: dbURL.appendingPathExtension("wal"))
-        try? FileManager.default.removeItem(at: dbURL.appendingPathExtension("shm"))
+    private static func databaseFileURLs(for dbURL: URL) -> [URL] {
+        [
+            dbURL,
+            URL(fileURLWithPath: dbURL.path + "-wal"),
+            URL(fileURLWithPath: dbURL.path + "-shm"),
+            dbURL.appendingPathExtension("wal"),
+            dbURL.appendingPathExtension("shm"),
+        ]
     }
 
     // MARK: - Record <-> Entry mapping

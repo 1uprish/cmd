@@ -103,6 +103,11 @@ final class TapController {
                 PasteQueue.shared.pasteNext()
             }
         } catch {
+            DiagnosticsLogbook.shared.record(
+                "startup_failed",
+                category: "lifecycle",
+                details: ["error": String(describing: error)]
+            )
             NSAlert(error: error).runModal()
         }
     }

@@ -124,6 +124,8 @@ public final class ClipLogSettings: ObservableObject {
 public enum LaunchAtLoginManager {
 
     private static let plistLabel = AppStoragePaths.bundleIdentifier
+    private static let launchctlTimeout: TimeInterval = 2.0
+    private static let launchctlQueue = DispatchQueue(label: "com.cmd.launchctl", qos: .utility)
     private static let legacyPlistLabels = AppStoragePaths.legacyBundleIdentifiers
     private static var plistURL: URL {
         let launchAgents = FileManager.default.homeDirectoryForCurrentUser
@@ -210,7 +212,9 @@ public enum LaunchAtLoginManager {
     }
 
     private static func remove() {
-        bootout(label: plistLabel, plistURL: plistURL)
+        if FileManager.default.fileExists(atPath: plistURL.path) {
+            bootout(label: plistLabel, plistURL: plistURL)
+        }
         try? FileManager.default.removeItem(at: plistURL)
         removeLegacyAgents()
     }
@@ -218,7 +222,9 @@ public enum LaunchAtLoginManager {
     private static func removeLegacyAgents() {
         for label in legacyPlistLabels {
             let url = launchAgentsDirectory.appendingPathComponent("\(label).plist")
-            bootout(label: label, plistURL: url)
+            if FileManager.default.fileExists(atPath: url.path) {
+                bootout(label: label, plistURL: url)
+            }
             try? FileManager.default.removeItem(at: url)
         }
     }
@@ -229,13 +235,40 @@ public enum LaunchAtLoginManager {
     }
 
     private static func runLaunchctl(_ arguments: [String]) {
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
-        task.arguments = arguments
-        task.standardOutput = FileHandle.nullDevice
-        task.standardError = FileHandle.nullDevice
-        try? task.run()
-        task.waitUntilExit()
+        let capturedArguments = arguments
+        launchctlQueue.async {
+            let task = Process()
+            task.executableURL = URL(fileURLWithPath: "/bin/launchctl")
+            task.arguments = capturedArguments
+            task.standardOutput = FileHandle.nullDevice
+            task.standardError = FileHandle.nullDevice
+
+            let finished = DispatchSemaphore(value: 0)
+            task.terminationHandler = { _ in finished.signal() }
+
+            do {
+                try task.run()
+            } catch {
+                DiagnosticsLogbook.shared.record(
+                    "launchctl_failed_to_start",
+                    category: "lifecycle",
+                    details: [
+                        "arguments": capturedArguments.joined(separator: " "),
+                        "error": String(describing: error)
+                    ]
+                )
+                return
+            }
+
+            if finished.wait(timeout: .now() + launchctlTimeout) == .timedOut {
+                task.terminate()
+                DiagnosticsLogbook.shared.record(
+                    "launchctl_timed_out",
+                    category: "lifecycle",
+                    details: ["arguments": capturedArguments.joined(separator: " ")]
+                )
+            }
+        }
     }
 }
 
