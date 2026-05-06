@@ -1,4 +1,5 @@
 import CoreGraphics
+import AppKit
 import Foundation
 
 // MARK: - PasteQueue
@@ -41,6 +42,17 @@ public final class PasteQueue: @unchecked Sendable {
         }
         guard let entry else { return false }
 
+        DiagnosticsLogbook.shared.record(
+            "paste_requested",
+            category: "interaction",
+            details: [
+                "source": "queue",
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID,
+                "targetApp": Self.frontmostBundleIdentifier(),
+                "remainingBeforePaste": "\(count)"
+            ]
+        )
         ClipPasteboardWriter.write(entry)
         synthesiseCmdV()
 
@@ -76,6 +88,16 @@ public final class PasteQueue: @unchecked Sendable {
         let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         up?.flags = .maskCommand
         up?.post(tap: .cgSessionEventTap)
+
+        DiagnosticsLogbook.shared.record(
+            "synthetic_paste_posted",
+            category: "interaction",
+            details: ["targetApp": Self.frontmostBundleIdentifier()]
+        )
+    }
+
+    private static func frontmostBundleIdentifier() -> String {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
     }
 }
 

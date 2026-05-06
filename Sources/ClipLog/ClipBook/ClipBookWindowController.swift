@@ -553,6 +553,16 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     ///   4. Wait one run-loop tick for the activation to propagate.
     ///   5. Synthesise ⌘V at .cgSessionEventTap — it now lands in the right app.
     private func paste(entry: ClipEntry) {
+        DiagnosticsLogbook.shared.record(
+            "paste_requested",
+            category: "interaction",
+            details: [
+                "source": "history_window",
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID,
+                "targetApp": previousApp?.bundleIdentifier ?? "unknown"
+            ]
+        )
         // Step 1: write to pasteboard while we still have focus.
         ClipPasteboardWriter.write(entry)
 
@@ -581,9 +591,23 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         let up = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         up?.flags = .maskCommand
         up?.post(tap: .cgSessionEventTap)
+        DiagnosticsLogbook.shared.record(
+            "synthetic_paste_posted",
+            category: "interaction",
+            details: ["targetApp": NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"]
+        )
     }
 
     private func copy(entry: ClipEntry) {
+        DiagnosticsLogbook.shared.record(
+            "copy_requested",
+            category: "interaction",
+            details: [
+                "source": "history_window",
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID
+            ]
+        )
         ClipPasteboardWriter.write(entry)
     }
 

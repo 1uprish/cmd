@@ -1,4 +1,5 @@
 import CoreGraphics
+import AppKit
 import Foundation
 
 public final class SlotManager: @unchecked Sendable {
@@ -50,6 +51,7 @@ public final class SlotManager: @unchecked Sendable {
     /// Paste a specific entry directly (safe: not affected by concurrent slot shifts).
     @discardableResult
     public func paste(entry: ClipEntry) -> Bool {
+        logPasteAttempt(source: "slot_entry", entry: entry)
         ClipPasteboardWriter.write(entry)
         synthesizeCmdV()
         return true
@@ -58,6 +60,14 @@ public final class SlotManager: @unchecked Sendable {
     /// Copy a specific entry into the system pasteboard without synthesising paste.
     @discardableResult
     public func copy(entry: ClipEntry) -> Bool {
+        DiagnosticsLogbook.shared.record(
+            "copy_requested",
+            category: "interaction",
+            details: [
+                "entryType": entry.contentType.rawValue,
+                "sourceApp": entry.sourceBundleID
+            ]
+        )
         ClipPasteboardWriter.write(entry)
         return true
     }
@@ -66,7 +76,9 @@ public final class SlotManager: @unchecked Sendable {
     public func paste(slotIndex: Int) -> Bool {
         let slots = currentSlots
         guard slotIndex >= 0, slotIndex < slots.count else { return false }
-        ClipPasteboardWriter.write(slots[slotIndex])
+        let entry = slots[slotIndex]
+        logPasteAttempt(source: "slot_index", entry: entry)
+        ClipPasteboardWriter.write(entry)
         synthesizeCmdV()
         return true
     }
@@ -84,9 +96,32 @@ public final class SlotManager: @unchecked Sendable {
         let keyUp = CGEvent(keyboardEventSource: source, virtualKey: vKey, keyDown: false)
         keyUp?.flags = .maskCommand
         keyUp?.post(tap: .cgSessionEventTap)
+
+        DiagnosticsLogbook.shared.record(
+            "synthetic_paste_posted",
+            category: "interaction",
+            details: ["targetApp": Self.frontmostBundleIdentifier()]
+        )
     }
 
     private static func milliseconds(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
+    }
+
+    private func logPasteAttempt(source: String, entry: ClipEntry) {
+        DiagnosticsLogbook.shared.record(
+            "paste_requested",
+            category: "interaction",
+            details: [
+                "source": source,
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID,
+                "targetApp": Self.frontmostBundleIdentifier()
+            ]
+        )
+    }
+
+    private static func frontmostBundleIdentifier() -> String {
+        NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
     }
 }
