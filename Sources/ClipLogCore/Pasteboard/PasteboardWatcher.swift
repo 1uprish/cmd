@@ -133,6 +133,16 @@ public final class PasteboardWatcher: @unchecked Sendable {
         NSPasteboard.PasteboardType("org.webmproject.webp")
     ]
 
+    private static let compressedImagePasteboardTypes: [NSPasteboard.PasteboardType] = [
+        .png,
+        NSPasteboard.PasteboardType("public.png"),
+        NSPasteboard.PasteboardType("public.jpeg"),
+        NSPasteboard.PasteboardType("public.heic"),
+        NSPasteboard.PasteboardType("public.heif"),
+        NSPasteboard.PasteboardType("com.compuserve.gif"),
+        NSPasteboard.PasteboardType("org.webmproject.webp")
+    ]
+
     private static let attachmentLabelFallbacks: Set<String> = [
         "User attachment",
         "Attachment"
@@ -722,7 +732,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func imageData(from pb: NSPasteboard) -> Data? {
-        for type in Self.imagePasteboardTypes {
+        for type in Self.compressedImagePasteboardTypes {
             if let data = boundedData(from: pb, forType: type, maxBytes: Self.maxInlineImageBytes),
                let normalized = normalizedPNGData(from: data) {
                 return normalized
@@ -730,14 +740,19 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
 
         for item in pb.pasteboardItems ?? [] {
-            for type in Self.imagePasteboardTypes {
+            for type in Self.compressedImagePasteboardTypes {
                 if let data = boundedData(from: item, forType: type, maxBytes: Self.maxInlineImageBytes),
                    let normalized = normalizedPNGData(from: data) {
                     return normalized
                 }
             }
-
         }
+
+        DiagnosticsLogbook.shared.record(
+            "tiff_image_capture_skipped",
+            category: "pasteboard",
+            details: ["reason": "tiff_auto_capture_deferred"]
+        )
 
         return nil
     }
