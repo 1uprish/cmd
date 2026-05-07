@@ -129,6 +129,10 @@ public enum ClipPasteboardWriter {
         dragPasteboardWriters(for: entry).first ?? plainTextItem(entry.previewText)
     }
 
+    public static func prewarmDragPayloads(for entries: [ClipEntry]) {
+        DragPasteboardPayloadCache.shared.prewarm(entries: entries)
+    }
+
     public static func originalImageData(for entry: ClipEntry) -> Data? {
         guard entry.contentType == .image else { return nil }
         return storedImageDataCandidates(for: entry).first { NSImage(data: $0) != nil }

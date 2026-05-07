@@ -34,6 +34,19 @@ final class DragPasteboardPayloadCache: @unchecked Sendable {
         return payload
     }
 
+    func prewarm(entries: [ClipEntry]) {
+        let imageEntries = entries.filter { $0.contentType == .image }
+        guard !imageEntries.isEmpty else { return }
+
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            guard let self else { return }
+            for entry in imageEntries.prefix(8) {
+                let payload = self.imagePayload(for: entry)
+                payload.prewarm()
+            }
+        }
+    }
+
     func fileURLs(for entry: ClipEntry) -> [NSURL] {
         let key = cacheKey(for: entry) as NSString
         cacheLock.lock()
@@ -120,6 +133,11 @@ final class ImageDragPayload: @unchecked Sendable {
         } catch {
             return nil
         }
+    }
+
+    func prewarm() {
+        _ = pngData()
+        _ = temporaryFileURL()
     }
 
     private var cacheFilename: String {

@@ -549,6 +549,7 @@ public final class HUDPanel {
             rowViews.append(row)
         }
         updateSelection()
+        ClipPasteboardWriter.prewarmDragPayloads(for: indices.compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil })
     }
 
     private func refreshRowsForFilter() {
@@ -616,6 +617,9 @@ public final class HUDPanel {
             row.updateStackDragCache(entries: isSelected ? selectedEntries : [])
         }
         updateSelectionBadge(count: selectedOriginalIndices.count)
+        if !selectedEntries.isEmpty {
+            ClipPasteboardWriter.prewarmDragPayloads(for: selectedEntries)
+        }
     }
 
     private func updateSelectionBadge(count: Int) {
@@ -1885,6 +1889,7 @@ private final class HUDRowView: NSView {
         cachedStackSignature = signature
         cachedStackDragWriters = ClipPasteboardWriter.dragPasteboardWriters(for: entries)
         cachedStackDragImage = lightweightStackDragImage(for: entries)
+        ClipPasteboardWriter.prewarmDragPayloads(for: entries)
     }
 
     private static let ghostSize = NSSize(width: 360, height: 68)
