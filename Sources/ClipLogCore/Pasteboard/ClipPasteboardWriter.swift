@@ -40,6 +40,28 @@ public enum ClipPasteboardWriter {
         }
     }
 
+    public static func write(_ entries: [ClipEntry], to pasteboard: NSPasteboard = .general) {
+        let startedAt = Date()
+        pasteboard.clearContents()
+        let writers = pasteboardWriters(for: entries)
+        if !writers.isEmpty {
+            pasteboard.writeObjects(writers)
+        }
+        let elapsedMs = milliseconds(since: startedAt)
+        if elapsedMs >= 250 {
+            DiagnosticsLogbook.shared.record(
+                "slow_clipboard_write",
+                category: "performance",
+                details: [
+                    "durationMs": "\(elapsedMs)",
+                    "entryType": "multiple",
+                    "entryCount": "\(entries.count)",
+                    "writerCount": "\(writers.count)"
+                ]
+            )
+        }
+    }
+
     public static func pasteboardWriters(for entry: ClipEntry) -> [NSPasteboardWriting] {
         switch entry.contentType {
         case .text, .code:
@@ -75,6 +97,10 @@ public enum ClipPasteboardWriter {
         }
     }
 
+    public static func pasteboardWriters(for entries: [ClipEntry]) -> [NSPasteboardWriting] {
+        pasteboardWriters(for: entries, dragOptimized: false)
+    }
+
     public static func primaryPasteboardWriter(for entry: ClipEntry) -> NSPasteboardWriting {
         pasteboardWriters(for: entry).first ?? plainTextItem(entry.previewText)
     }
@@ -92,6 +118,10 @@ public enum ClipPasteboardWriter {
         default:
             return pasteboardWriters(for: entry)
         }
+    }
+
+    public static func dragPasteboardWriters(for entries: [ClipEntry]) -> [NSPasteboardWriting] {
+        pasteboardWriters(for: entries, dragOptimized: true)
     }
 
     public static func primaryDragPasteboardWriter(for entry: ClipEntry) -> NSPasteboardWriting {
@@ -115,6 +145,51 @@ public enum ClipPasteboardWriter {
 
     public static func decodeRichPayload(_ data: Data) -> RichPasteboardPayload? {
         try? payloadDecoder.decode(RichPasteboardPayload.self, from: data)
+    }
+
+    private static func pasteboardWriters(
+        for entries: [ClipEntry],
+        dragOptimized: Bool
+    ) -> [NSPasteboardWriting] {
+        let entries = entries.filter { !$0.contentData.isEmpty || $0.mediaPath != nil }
+        guard !entries.isEmpty else { return [] }
+        guard entries.count > 1 else {
+            return dragOptimized ? dragPasteboardWriters(for: entries[0]) : pasteboardWriters(for: entries[0])
+        }
+
+        var writers: [NSPasteboardWriting] = []
+        let textFragments = entries.compactMap(textFragment(for:))
+        if !textFragments.isEmpty {
+            writers.append(plainTextItem(textFragments.joined(separator: "\n")))
+        }
+
+        for entry in entries {
+            switch entry.contentType {
+            case .image, .file:
+                writers.append(contentsOf: dragOptimized ? dragPasteboardWriters(for: entry) : pasteboardWriters(for: entry))
+            case .rich:
+                if textFragment(for: entry) == nil {
+                    writers.append(contentsOf: dragOptimized ? dragPasteboardWriters(for: entry) : pasteboardWriters(for: entry))
+                }
+            case .text, .code, .url, .color:
+                break
+            }
+        }
+
+        if writers.isEmpty {
+            writers.append(plainTextItem(entries.map(\.previewText).joined(separator: "\n")))
+        }
+        return writers
+    }
+
+    private static func textFragment(for entry: ClipEntry) -> String? {
+        switch entry.contentType {
+        case .text, .code, .url, .color, .rich:
+            let value = String(data: entry.contentData, encoding: .utf8) ?? entry.previewText
+            return value.isEmpty ? nil : value
+        case .image, .file:
+            return nil
+        }
     }
 
     private static func plainTextItem(_ value: String) -> NSPasteboardItem {

@@ -57,6 +57,18 @@ public final class SlotManager: @unchecked Sendable {
         return true
     }
 
+    @discardableResult
+    public func paste(entries: [ClipEntry]) -> Bool {
+        guard !entries.isEmpty else { return false }
+        if entries.count == 1 {
+            return paste(entry: entries[0])
+        }
+        logBatchPasteAttempt(source: "slot_entries", entries: entries)
+        ClipPasteboardWriter.write(entries)
+        synthesizeCmdV()
+        return true
+    }
+
     /// Copy a specific entry into the system pasteboard without synthesising paste.
     @discardableResult
     public func copy(entry: ClipEntry) -> Bool {
@@ -69,6 +81,25 @@ public final class SlotManager: @unchecked Sendable {
             ]
         )
         ClipPasteboardWriter.write(entry)
+        return true
+    }
+
+    @discardableResult
+    public func copy(entries: [ClipEntry]) -> Bool {
+        guard !entries.isEmpty else { return false }
+        if entries.count == 1 {
+            return copy(entry: entries[0])
+        }
+        DiagnosticsLogbook.shared.record(
+            "copy_requested",
+            category: "interaction",
+            details: [
+                "entryType": "multiple",
+                "entryCount": "\(entries.count)",
+                "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ",")
+            ]
+        )
+        ClipPasteboardWriter.write(entries)
         return true
     }
 
@@ -116,6 +147,20 @@ public final class SlotManager: @unchecked Sendable {
                 "source": source,
                 "entryType": entry.contentType.rawValue,
                 "entrySourceApp": entry.sourceBundleID,
+                "targetApp": Self.frontmostBundleIdentifier()
+            ]
+        )
+    }
+
+    private func logBatchPasteAttempt(source: String, entries: [ClipEntry]) {
+        DiagnosticsLogbook.shared.record(
+            "paste_requested",
+            category: "interaction",
+            details: [
+                "source": source,
+                "entryType": "multiple",
+                "entryCount": "\(entries.count)",
+                "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ","),
                 "targetApp": Self.frontmostBundleIdentifier()
             ]
         )

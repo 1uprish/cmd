@@ -150,6 +150,8 @@ public final class HUDPanel {
     private var currentSlots: [ClipEntry] = []
     private var filterText = ""
     private var selectedDisplayIndex: Int?
+    private var multiSelectedOriginalIndices: Set<Int> = []
+    private var multiSelectionAnchorDisplayIndex: Int?
     private var lastCursorLocation = NSPoint.zero
     private var focusedTextFrame: NSRect?
     private var lastAnimationOrigin = NSPoint.zero
@@ -264,6 +266,8 @@ public final class HUDPanel {
         currentSlots = Array(slots.prefix(Layout.maxEntries))
         filterText = ""
         selectedDisplayIndex = currentSlots.isEmpty ? nil : 0
+        multiSelectedOriginalIndices = []
+        multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         filterBadge.isHidden = true
         lastCursorLocation = NSEvent.mouseLocation
         focusedTextFrame = FocusedTextInputLocator.frameNearCursor(lastCursorLocation)
@@ -321,13 +325,13 @@ public final class HUDPanel {
         }
 
         guard let dismissedSessionID = beginDismiss(sessionID: sessionID) else { return }
-        let selectedEntry = index.flatMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
+        let selectedEntries = entriesForAction(fallbackOriginalIndex: index)
 
         removeDismissGuards()
         onDismiss?(dismissedSessionID)
 
-        if let selectedEntry {
-            slotManager?.paste(entry: selectedEntry)
+        if !selectedEntries.isEmpty {
+            slotManager?.paste(entries: selectedEntries)
         }
 
         if animated {
@@ -340,8 +344,9 @@ public final class HUDPanel {
     }
 
     private func copy(index: Int) {
-        guard currentSlots.indices.contains(index) else { return }
-        slotManager?.copy(entry: currentSlots[index])
+        let entries = entriesForAction(fallbackOriginalIndex: index)
+        guard !entries.isEmpty else { return }
+        slotManager?.copy(entries: entries)
     }
 
     public func moveSelection(delta: Int) {
@@ -359,6 +364,8 @@ public final class HUDPanel {
 
         let current = selectedDisplayIndex ?? 0
         selectedDisplayIndex = (current + delta + indices.count) % indices.count
+        multiSelectedOriginalIndices = []
+        multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         updateSelection()
         scrollSelectedRowToVisible()
     }
@@ -388,6 +395,9 @@ public final class HUDPanel {
         if !filterText.isEmpty {
             filterText = ""
             refreshRowsForFilter()
+        } else if !multiSelectedOriginalIndices.isEmpty {
+            multiSelectedOriginalIndices = []
+            updateSelection()
         } else {
             dismiss(sessionID: sessionID)
         }
@@ -464,8 +474,14 @@ public final class HUDPanel {
             row.onPaste = { [weak self] selectedIndex in
                 self?.dismiss(selecting: selectedIndex, sessionID: nil)
             }
+            row.onModifiedClick = { [weak self] selectedIndex, modifiers in
+                self?.handleModifiedClick(index: selectedIndex, modifiers: modifiers)
+            }
             row.onCopy = { [weak self] selectedIndex in
                 self?.copy(index: selectedIndex)
+            }
+            row.dragEntriesProvider = { [weak self] selectedIndex in
+                self?.entriesForAction(fallbackOriginalIndex: selectedIndex) ?? []
             }
             row.onDragStart = { [weak self] in
                 self?.dismissForDrag()
@@ -478,6 +494,8 @@ public final class HUDPanel {
 
     private func refreshRowsForFilter() {
         selectedDisplayIndex = displayedIndices().isEmpty ? nil : 0
+        multiSelectedOriginalIndices = []
+        multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         rebuildRows()
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
         currentPanelWidth = preferredPanelWidth(for: focusedTextFrame)
@@ -526,9 +544,69 @@ public final class HUDPanel {
     }
 
     private func updateSelection() {
-        for (displayIndex, row) in rowViews.enumerated() {
-            row.setSelected(displayIndex == selectedDisplayIndex)
+        let selectedOriginalIndices = selectionOriginalIndicesForDisplay()
+        for row in rowViews {
+            let originalIndex = row.originalIndex
+            row.setSelected(originalIndex.map { selectedOriginalIndices.contains($0) } ?? false)
         }
+    }
+
+    private func handleModifiedClick(index: Int, modifiers: NSEvent.ModifierFlags) {
+        let visibleIndices = displayedIndices()
+        guard let displayIndex = visibleIndices.firstIndex(of: index) else { return }
+
+        if modifiers.contains(.shift) {
+            let anchor = multiSelectionAnchorDisplayIndex ?? selectedDisplayIndex ?? displayIndex
+            let lower = min(anchor, displayIndex)
+            let upper = max(anchor, displayIndex)
+            multiSelectedOriginalIndices = Set(visibleIndices[lower...upper])
+            selectedDisplayIndex = displayIndex
+            updateSelection()
+            return
+        }
+
+        if modifiers.contains(.command) {
+            if multiSelectedOriginalIndices.isEmpty {
+                multiSelectedOriginalIndices = selectionOriginalIndicesForDisplay()
+            }
+            if multiSelectedOriginalIndices.contains(index) {
+                multiSelectedOriginalIndices.remove(index)
+            } else {
+                multiSelectedOriginalIndices.insert(index)
+            }
+            selectedDisplayIndex = displayIndex
+            multiSelectionAnchorDisplayIndex = displayIndex
+            updateSelection()
+            return
+        }
+
+        multiSelectedOriginalIndices = []
+        selectedDisplayIndex = displayIndex
+        multiSelectionAnchorDisplayIndex = displayIndex
+        updateSelection()
+    }
+
+    private func selectionOriginalIndicesForDisplay() -> Set<Int> {
+        if !multiSelectedOriginalIndices.isEmpty {
+            return multiSelectedOriginalIndices
+        }
+
+        let indices = displayedIndices()
+        guard let selectedDisplayIndex,
+              indices.indices.contains(selectedDisplayIndex)
+        else { return [] }
+        return [indices[selectedDisplayIndex]]
+    }
+
+    private func entriesForAction(fallbackOriginalIndex: Int?) -> [ClipEntry] {
+        let visibleIndices = displayedIndices()
+        let selectedOriginalIndices = !multiSelectedOriginalIndices.isEmpty
+            ? multiSelectedOriginalIndices
+            : Set(fallbackOriginalIndex.map { [$0] } ?? [])
+
+        return visibleIndices
+            .filter { selectedOriginalIndices.contains($0) }
+            .compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
     }
 
     private func scrollSelectedRowToVisible() {
@@ -1296,8 +1374,10 @@ private final class HUDRowsDocumentView: NSView {
 private final class HUDRowView: NSView {
 
     var onPaste: ((Int) -> Void)?
+    var onModifiedClick: ((Int, NSEvent.ModifierFlags) -> Void)?
     var onCopy: ((Int) -> Void)?
     var onDragStart: (() -> Void)?
+    var dragEntriesProvider: ((Int) -> [ClipEntry])?
 
     private let appIconView = NSImageView()
     private let appNameLabel = NSTextField(labelWithString: "")
@@ -1500,15 +1580,21 @@ private final class HUDRowView: NSView {
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard !isEmptyRow, entry != nil, !dragStarted else { return }
+        guard !isEmptyRow, let index, !dragStarted else { return }
         let point = convert(event.locationInWindow, from: nil)
         let dx = point.x - mouseDownLocation.x
         let dy = point.y - mouseDownLocation.y
         guard dx * dx + dy * dy > 16 else { return }
-        guard let image = cachedDragImage else { return }
 
-        let writers = cachedDragWriters
+        let dragEntries = dragEntriesProvider?(index) ?? entry.map { [$0] } ?? []
+        let writers = dragEntries.count > 1
+            ? ClipPasteboardWriter.dragPasteboardWriters(for: dragEntries)
+            : cachedDragWriters
         guard !writers.isEmpty else { return }
+        let image = dragEntries.count > 1
+            ? lightweightStackDragImage(for: dragEntries)
+            : cachedDragImage
+        guard let image else { return }
         dragStarted = true
 
         let ghostSize = image.size
@@ -1543,6 +1629,10 @@ private final class HUDRowView: NSView {
         guard !dragStarted, let index else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard !copyButton.frame.contains(point) else { return }
+        if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.shift) {
+            onModifiedClick?(index, event.modifierFlags)
+            return
+        }
         onPaste?(index)
     }
 
@@ -1708,6 +1798,69 @@ private final class HUDRowView: NSView {
             )
         }
         return image
+    }
+
+    private func lightweightStackDragImage(for entries: [ClipEntry]) -> NSImage {
+        let size = Self.ghostSize
+        let image = NSImage(size: size)
+        let count = entries.count
+        let title = "\(count) selected item\(count == 1 ? "" : "s")"
+        let preview = entries
+            .prefix(3)
+            .map { previewText(for: $0) }
+            .joined(separator: "  +  ")
+
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            image.lockFocus()
+            defer { image.unlockFocus() }
+
+            let rect = NSRect(origin: .zero, size: size)
+            for offset in stride(from: 2, through: 0, by: -1) {
+                let inset = CGFloat(offset) * 5
+                let stackRect = rect.offsetBy(dx: inset, dy: -inset).insetBy(dx: CGFloat(offset) * 2, dy: CGFloat(offset) * 2)
+                let path = NSBezierPath(roundedRect: stackRect, xRadius: 18, yRadius: 18)
+                NSColor(calibratedWhite: 0.16 + CGFloat(offset) * 0.025, alpha: max(0.82, cardOpacity * 0.94)).setFill()
+                path.fill()
+            }
+
+            NSColor.systemBlue.withAlphaComponent(0.74).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 16, y: 18, width: 32, height: 32)).fill()
+            ("\(count)" as NSString).draw(
+                with: NSRect(x: 16, y: 24, width: 32, height: 18),
+                options: [.usesLineFragmentOrigin],
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 13, weight: .bold),
+                    .foregroundColor: NSColor.white,
+                    .paragraphStyle: centeredParagraphStyle()
+                ]
+            )
+
+            let textX: CGFloat = 64
+            let textWidth = size.width - textX - 16
+            (title as NSString).draw(
+                with: NSRect(x: textX, y: 39, width: textWidth, height: 18),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 13, weight: .bold),
+                    .foregroundColor: NSColor.white,
+                ]
+            )
+            (preview as NSString).draw(
+                with: NSRect(x: textX, y: 19, width: textWidth, height: 18),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 12, weight: .medium),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.70),
+                ]
+            )
+        }
+        return image
+    }
+
+    private func centeredParagraphStyle() -> NSParagraphStyle {
+        let style = NSMutableParagraphStyle()
+        style.alignment = .center
+        return style
     }
 
     private func pasteboardWriters(for entry: ClipEntry) -> [NSPasteboardWriting] {
