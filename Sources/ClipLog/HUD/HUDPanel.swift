@@ -141,6 +141,7 @@ public final class HUDPanel {
     private let titleLabel = NSTextField(labelWithString: "cmd")
     private let subtitleLabel = NSTextField(labelWithString: "Recent clipboard")
     private let filterBadge = NSTextField(labelWithString: "")
+    private let selectionBadge = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
     private let rowContainer = HUDRowsDocumentView()
     private let topScrollFade = HUDScrollFadeView(isTop: true)
@@ -159,6 +160,7 @@ public final class HUDPanel {
     private var currentHUDScale: CGFloat = 1.0
     private var currentTransitionStyle = TransitionStyle.magnetic
     private var animationGeneration: UInt64 = 0
+    private var dragRestoreSnapshot: DragRestoreSnapshot?
 
     private let visibilityLock = NSLock()
     private var _isVisible = false
@@ -173,6 +175,14 @@ public final class HUDPanel {
     private var spaceObserver: Any?
     private var reduceMotion: Bool {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    }
+
+    private struct DragRestoreSnapshot {
+        let slots: [ClipEntry]
+        let filterText: String
+        let selectedDisplayIndex: Int?
+        let selectedOriginalIndices: Set<Int>
+        let anchorDisplayIndex: Int?
     }
 
     private init() {
@@ -233,6 +243,16 @@ public final class HUDPanel {
         filterBadge.layer?.masksToBounds = true
         filterBadge.isHidden = true
 
+        selectionBadge.font = .systemFont(ofSize: 11, weight: .bold)
+        selectionBadge.textColor = .white
+        selectionBadge.alignment = .center
+        selectionBadge.drawsBackground = true
+        selectionBadge.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.88)
+        selectionBadge.wantsLayer = true
+        selectionBadge.layer?.cornerRadius = 9
+        selectionBadge.layer?.masksToBounds = true
+        selectionBadge.isHidden = true
+
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
@@ -247,6 +267,7 @@ public final class HUDPanel {
         subtitleLabel.isHidden = true
         filterBadge.isHidden = true
         rootView.addSubview(scrollView)
+        rootView.addSubview(selectionBadge)
         topScrollFade.isHidden = true
         bottomScrollFade.isHidden = true
     }
@@ -269,6 +290,8 @@ public final class HUDPanel {
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         filterBadge.isHidden = true
+        selectionBadge.isHidden = true
+        dragRestoreSnapshot = nil
         lastCursorLocation = NSEvent.mouseLocation
         focusedTextFrame = FocusedTextInputLocator.frameNearCursor(lastCursorLocation)
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
@@ -301,7 +324,36 @@ public final class HUDPanel {
     // MARK: - Dismiss
 
     public func dismissForDrag() {
+        dragRestoreSnapshot = DragRestoreSnapshot(
+            slots: currentSlots,
+            filterText: filterText,
+            selectedDisplayIndex: selectedDisplayIndex,
+            selectedOriginalIndices: selectionOriginalIndicesForDisplay(),
+            anchorDisplayIndex: multiSelectionAnchorDisplayIndex
+        )
         dismiss(selecting: nil, sessionID: nil, animated: false)
+    }
+
+    public func restoreAfterCancelledDrag() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.restoreAfterCancelledDrag() }
+            return
+        }
+        guard !isVisible, let snapshot = dragRestoreSnapshot else { return }
+
+        show(sessionID: UInt64.random(in: 1...UInt64.max), slots: snapshot.slots)
+        filterText = snapshot.filterText
+        selectedDisplayIndex = snapshot.selectedDisplayIndex
+        multiSelectedOriginalIndices = snapshot.selectedOriginalIndices.count > 1
+            ? snapshot.selectedOriginalIndices
+            : []
+        multiSelectionAnchorDisplayIndex = snapshot.anchorDisplayIndex
+        rebuildRows()
+        layoutPanel()
+        updateFilterBadge()
+        updateSelection()
+        scrollSelectedRowToVisible()
+        dragRestoreSnapshot = nil
     }
 
     func dismiss() {
@@ -486,6 +538,13 @@ public final class HUDPanel {
             row.onDragStart = { [weak self] in
                 self?.dismissForDrag()
             }
+            row.onDragEnd = { [weak self] operation in
+                if operation.isEmpty {
+                    self?.restoreAfterCancelledDrag()
+                } else {
+                    self?.clearDragRestoreSnapshot()
+                }
+            }
             rowContainer.addSubview(row)
             rowViews.append(row)
         }
@@ -549,6 +608,34 @@ public final class HUDPanel {
             let originalIndex = row.originalIndex
             row.setSelected(originalIndex.map { selectedOriginalIndices.contains($0) } ?? false)
         }
+        updateSelectionBadge(count: selectedOriginalIndices.count)
+    }
+
+    private func updateSelectionBadge(count: Int) {
+        guard count > 1 else {
+            selectionBadge.isHidden = true
+            selectionBadge.stringValue = ""
+            return
+        }
+        selectionBadge.stringValue = "  \(count) selected  "
+        selectionBadge.isHidden = false
+        layoutSelectionBadge()
+    }
+
+    private func layoutSelectionBadge() {
+        guard !selectionBadge.isHidden else { return }
+        let width = max(78, selectionBadge.intrinsicContentSize.width + 12)
+        let height: CGFloat = 22
+        selectionBadge.frame = NSRect(
+            x: max(scaled(Layout.padding), rootView.bounds.width - scaled(Layout.padding) - width),
+            y: max(scaled(Layout.padding), rootView.bounds.height - scaled(Layout.padding) - height),
+            width: width,
+            height: height
+        )
+    }
+
+    private func clearDragRestoreSnapshot() {
+        dragRestoreSnapshot = nil
     }
 
     private func handleModifiedClick(index: Int, modifiers: NSEvent.ModifierFlags) {
@@ -658,6 +745,7 @@ public final class HUDPanel {
             row.frame = NSRect(x: 0, y: y, width: cardWidth, height: rowHeight)
         }
 
+        layoutSelectionBadge()
         panel.setFrameOrigin(panelOrigin(size: size, focusedTextFrame: focusedTextFrame))
     }
 
@@ -1377,6 +1465,7 @@ private final class HUDRowView: NSView {
     var onModifiedClick: ((Int, NSEvent.ModifierFlags) -> Void)?
     var onCopy: ((Int) -> Void)?
     var onDragStart: (() -> Void)?
+    var onDragEnd: ((NSDragOperation) -> Void)?
     var dragEntriesProvider: ((Int) -> [ClipEntry])?
 
     private let appIconView = NSImageView()
@@ -1576,11 +1665,15 @@ private final class HUDRowView: NSView {
     override func mouseDown(with event: NSEvent) {
         dragStarted = false
         mouseDownLocation = convert(event.locationInWindow, from: nil)
+        if !isEmptyRow {
+            NSCursor.closedHand.set()
+        }
         animateDragLift(active: true)
     }
 
     override func mouseDragged(with event: NSEvent) {
         guard !isEmptyRow, let index, !dragStarted else { return }
+        let dragStart = Date()
         let point = convert(event.locationInWindow, from: nil)
         let dx = point.x - mouseDownLocation.x
         let dy = point.y - mouseDownLocation.y
@@ -1596,6 +1689,7 @@ private final class HUDRowView: NSView {
             : cachedDragImage
         guard let image else { return }
         dragStarted = true
+        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
 
         let ghostSize = image.size
         let dragFrame = NSRect(
@@ -1609,22 +1703,41 @@ private final class HUDRowView: NSView {
             item.setDraggingFrame(dragFrame, contents: offset == 0 ? image : nil)
             return item
         }
+        let elapsedMs = Int(Date().timeIntervalSince(dragStart) * 1000)
+        if elapsedMs >= 50 {
+            DiagnosticsLogbook.shared.record(
+                "slow_drag_session_start",
+                category: "performance",
+                details: [
+                    "durationMs": "\(elapsedMs)",
+                    "entryCount": "\(dragEntries.count)",
+                    "writerCount": "\(writers.count)"
+                ]
+            )
+        }
         beginDraggingSession(with: items, event: event, source: self)
     }
 
     override func mouseEntered(with event: NSEvent) {
         hovering = true
+        if !isEmptyRow {
+            NSCursor.openHand.set()
+        }
         applyChrome()
         animateHoverLift(active: true)
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
+        NSCursor.arrow.set()
         applyChrome()
         animateHoverLift(active: false)
     }
 
     override func mouseUp(with event: NSEvent) {
+        if hovering && !isEmptyRow {
+            NSCursor.openHand.set()
+        }
         animateDragLift(active: false)
         guard !dragStarted, let index else { return }
         let point = convert(event.locationInWindow, from: nil)
@@ -1639,6 +1752,7 @@ private final class HUDRowView: NSView {
     @objc private func copyTapped() {
         guard let index else { return }
         onCopy?(index)
+        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
         copyButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")
         copyButton.contentTintColor = .systemGreen
         animateCopyConfirmation()
@@ -1805,6 +1919,7 @@ private final class HUDRowView: NSView {
         let image = NSImage(size: size)
         let count = entries.count
         let title = "\(count) selected item\(count == 1 ? "" : "s")"
+        let chips = typeChips(for: entries)
         let preview = entries
             .prefix(3)
             .map { previewText(for: $0) }
@@ -1823,7 +1938,7 @@ private final class HUDRowView: NSView {
                 path.fill()
             }
 
-            NSColor.systemBlue.withAlphaComponent(0.74).setFill()
+            NSColor.systemBlue.withAlphaComponent(0.82).setFill()
             NSBezierPath(ovalIn: NSRect(x: 16, y: 18, width: 32, height: 32)).fill()
             ("\(count)" as NSString).draw(
                 with: NSRect(x: 16, y: 24, width: 32, height: 18),
@@ -1846,15 +1961,52 @@ private final class HUDRowView: NSView {
                 ]
             )
             (preview as NSString).draw(
-                with: NSRect(x: textX, y: 19, width: textWidth, height: 18),
+                with: NSRect(x: textX, y: 23, width: textWidth, height: 16),
                 options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
                 attributes: [
                     .font: NSFont.systemFont(ofSize: 12, weight: .medium),
                     .foregroundColor: NSColor.white.withAlphaComponent(0.70),
                 ]
             )
+            drawTypeChips(chips, startX: textX, y: 7, maxWidth: textWidth)
         }
         return image
+    }
+
+    private func typeChips(for entries: [ClipEntry]) -> [String] {
+        var seen: Set<String> = []
+        var chips: [String] = []
+        for entry in entries {
+            let label = CmdVisualStyle.label(for: entry.contentType, uppercase: true)
+            guard seen.insert(label).inserted else { continue }
+            chips.append(label)
+            if chips.count == 3 { break }
+        }
+        return chips
+    }
+
+    private func drawTypeChips(_ chips: [String], startX: CGFloat, y: CGFloat, maxWidth: CGFloat) {
+        var x = startX
+        let gap: CGFloat = 6
+        for chip in chips {
+            let textWidth = (chip as NSString).size(withAttributes: [
+                .font: NSFont.systemFont(ofSize: 9, weight: .bold)
+            ]).width
+            let chipWidth = textWidth + 14
+            guard x + chipWidth <= startX + maxWidth else { return }
+            let rect = NSRect(x: x, y: y, width: chipWidth, height: 14)
+            NSColor.white.withAlphaComponent(0.11).setFill()
+            NSBezierPath(roundedRect: rect, xRadius: 7, yRadius: 7).fill()
+            (chip as NSString).draw(
+                with: rect.insetBy(dx: 7, dy: 1),
+                options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine],
+                attributes: [
+                    .font: NSFont.systemFont(ofSize: 9, weight: .bold),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.58)
+                ]
+            )
+            x += chipWidth + gap
+        }
     }
 
     private func centeredParagraphStyle() -> NSParagraphStyle {
@@ -1925,6 +2077,12 @@ extension HUDRowView: NSDraggingSource {
 
     func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
         onDragStart?()
+    }
+
+    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
+        NSCursor.arrow.set()
+        animateDragLift(active: false)
+        onDragEnd?(operation)
     }
 
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {

@@ -362,7 +362,7 @@ private final class LazyImageDragProvider: NSObject, NSPasteboardItemDataProvide
         let startedAt = Date()
         defer {
             let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            if elapsedMs >= 250 {
+            if elapsedMs >= 50 {
                 DiagnosticsLogbook.shared.record(
                     "slow_drag_payload_materialize",
                     category: "performance",
@@ -462,7 +462,7 @@ private final class LazyRichDragProvider: NSObject, NSPasteboardItemDataProvider
         let startedAt = Date()
         defer {
             let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            if elapsedMs >= 250 {
+            if elapsedMs >= 50 {
                 DiagnosticsLogbook.shared.record(
                     "slow_drag_payload_materialize",
                     category: "performance",
