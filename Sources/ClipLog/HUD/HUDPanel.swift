@@ -280,6 +280,15 @@ public final class HUDPanel {
             return
         }
 
+        let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "show",
+            details: [
+                "sessionID": "\(sessionID)",
+                "slotCount": "\(slots.count)"
+            ]
+        )
         animationGeneration &+= 1
         removeDismissGuards()
         resetRootLayer()
@@ -297,6 +306,17 @@ public final class HUDPanel {
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
         currentTransitionStyle = TransitionStyle(setting: ClipLogSettings.shared.hudAnimationStyle)
         currentPanelWidth = preferredPanelWidth(for: focusedTextFrame)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "show",
+            details: [
+                "sessionID": "\(sessionID)",
+                "step": "layout",
+                "visibleSlotCount": "\(currentSlots.count)",
+                "scale": String(format: "%.2f", Double(currentHUDScale)),
+                "animation": currentTransitionStyle.rawValue
+            ]
+        )
 
         setVisible(true, sessionID: sessionID)
         rebuildRows()
@@ -314,7 +334,22 @@ public final class HUDPanel {
         }
         panel.alphaValue = 0
         panel.orderFrontRegardless()
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "show",
+            details: ["sessionID": "\(sessionID)", "step": "animate_in"]
+        )
         animateIn()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "show",
+            details: [
+                "sessionID": "\(sessionID)",
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))",
+                "panelWidth": "\(Int(currentPanelWidth))"
+            ]
+        )
 
         DispatchQueue.main.async { [weak self] in
             self?.installDismissGuards(sessionID: sessionID)
@@ -324,6 +359,11 @@ public final class HUDPanel {
     // MARK: - Dismiss
 
     public func dismissForDrag() {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "drag",
+            action: "hud_dismiss_for_drag",
+            details: ["selectedCount": "\(selectionOriginalIndicesForDisplay().count)"]
+        )
         dragRestoreSnapshot = DragRestoreSnapshot(
             slots: currentSlots,
             filterText: filterText,
@@ -332,6 +372,11 @@ public final class HUDPanel {
             anchorDisplayIndex: multiSelectionAnchorDisplayIndex
         )
         dismissWithoutActionForDrag(animated: false)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "drag",
+            action: "hud_dismiss_for_drag",
+            details: ["success": "true"]
+        )
     }
 
     public func restoreAfterCancelledDrag() {
@@ -341,6 +386,14 @@ public final class HUDPanel {
         }
         guard !isVisible, let snapshot = dragRestoreSnapshot else { return }
 
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "drag",
+            action: "restore_cancelled_drag",
+            details: [
+                "slotCount": "\(snapshot.slots.count)",
+                "selectedCount": "\(snapshot.selectedOriginalIndices.count)"
+            ]
+        )
         show(sessionID: UInt64.random(in: 1...UInt64.max), slots: snapshot.slots)
         filterText = snapshot.filterText
         selectedDisplayIndex = snapshot.selectedDisplayIndex
@@ -354,6 +407,11 @@ public final class HUDPanel {
         updateSelection()
         scrollSelectedRowToVisible()
         dragRestoreSnapshot = nil
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "drag",
+            action: "restore_cancelled_drag",
+            details: ["success": "true"]
+        )
     }
 
     func dismiss() {
@@ -376,16 +434,51 @@ public final class HUDPanel {
             return
         }
 
-        guard let dismissedSessionID = beginDismiss(sessionID: sessionID) else { return }
+        let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "dismiss",
+            details: [
+                "sessionID": sessionID.map(String.init) ?? "none",
+                "selectingIndex": index.map(String.init) ?? "none",
+                "animated": "\(animated)"
+            ]
+        )
+        guard let dismissedSessionID = beginDismiss(sessionID: sessionID) else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "dismiss",
+                details: ["success": "false", "reason": "not_visible_or_session_mismatch"]
+            )
+            return
+        }
         let selectedEntries = entriesForAction(fallbackOriginalIndex: index)
 
         removeDismissGuards()
         onDismiss?(dismissedSessionID)
 
         if !selectedEntries.isEmpty {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "hud",
+                action: "dismiss",
+                details: [
+                    "sessionID": "\(dismissedSessionID)",
+                    "step": "paste_selection",
+                    "selectedCount": "\(selectedEntries.count)",
+                    "entryTypes": selectedEntries.map(\.contentType.rawValue).joined(separator: ",")
+                ]
+            )
             slotManager?.paste(entries: selectedEntries)
         }
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "dismiss",
+            details: [
+                "sessionID": "\(dismissedSessionID)",
+                "step": animated ? "animate_out" : "order_out"
+            ]
+        )
         if animated {
             animateOut(to: lastAnimationOrigin, selectedOriginalIndex: index)
         } else {
@@ -393,6 +486,16 @@ public final class HUDPanel {
             resetRootLayer()
             resetRows()
         }
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "dismiss",
+            details: [
+                "sessionID": "\(dismissedSessionID)",
+                "success": "true",
+                "selectedCount": "\(selectedEntries.count)",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ]
+        )
     }
 
     private func dismissWithoutActionForDrag(animated: Bool) {
@@ -424,9 +527,42 @@ public final class HUDPanel {
     }
 
     private func copy(index: Int) {
+        let startedAt = Date()
         let entries = entriesForAction(fallbackOriginalIndex: index)
-        guard !entries.isEmpty else { return }
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "copy",
+            details: [
+                "fallbackIndex": "\(index)",
+                "selectedCount": "\(entries.count)"
+            ]
+        )
+        guard !entries.isEmpty else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "copy",
+                details: ["success": "false", "reason": "empty_selection"]
+            )
+            return
+        }
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "copy",
+            details: [
+                "step": "write_pasteboard",
+                "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ",")
+            ]
+        )
         slotManager?.copy(entries: entries)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "copy",
+            details: [
+                "success": "true",
+                "selectedCount": "\(entries.count)",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ]
+        )
     }
 
     public func moveSelection(delta: Int) {
@@ -435,10 +571,24 @@ public final class HUDPanel {
             return
         }
 
+        let previous = selectedDisplayIndex
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "move_selection",
+            details: [
+                "delta": "\(delta)",
+                "previousIndex": previous.map(String.init) ?? "none"
+            ]
+        )
         let indices = displayedIndices()
         guard !indices.isEmpty else {
             selectedDisplayIndex = nil
             updateSelection()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "move_selection",
+                details: ["success": "false", "reason": "empty_display"]
+            )
             return
         }
 
@@ -448,6 +598,15 @@ public final class HUDPanel {
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         updateSelection()
         scrollSelectedRowToVisible()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "move_selection",
+            details: [
+                "success": "true",
+                "newIndex": selectedDisplayIndex.map(String.init) ?? "none",
+                "displayCount": "\(indices.count)"
+            ]
+        )
     }
 
     public func confirmSelection(sessionID: UInt64) {
@@ -456,14 +615,49 @@ public final class HUDPanel {
             return
         }
 
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "confirm_selection",
+            details: [
+                "sessionID": "\(sessionID)",
+                "selectedIndex": selectedDisplayIndex.map(String.init) ?? "none"
+            ]
+        )
         let indices = displayedIndices()
         guard let selectedDisplayIndex,
               indices.indices.contains(selectedDisplayIndex)
-        else { return }
+        else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "confirm_selection",
+                details: ["success": "false", "reason": "invalid_selection"]
+            )
+            return
+        }
 
         let originalIndex = indices[selectedDisplayIndex]
-        guard currentSlots.indices.contains(originalIndex) else { return }
+        guard currentSlots.indices.contains(originalIndex) else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "confirm_selection",
+                details: ["success": "false", "reason": "invalid_original_index"]
+            )
+            return
+        }
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "confirm_selection",
+            details: [
+                "step": "dismiss_with_selection",
+                "originalIndex": "\(originalIndex)"
+            ]
+        )
         dismiss(selecting: originalIndex, sessionID: sessionID)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "confirm_selection",
+            details: ["success": "true", "originalIndex": "\(originalIndex)"]
+        )
     }
 
     public func handleEscape(sessionID: UInt64) {
@@ -472,14 +666,38 @@ public final class HUDPanel {
             return
         }
 
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "escape",
+            details: [
+                "sessionID": "\(sessionID)",
+                "filterLength": "\(filterText.count)",
+                "selectedCount": "\(multiSelectedOriginalIndices.count)"
+            ]
+        )
         if !filterText.isEmpty {
             filterText = ""
             refreshRowsForFilter()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "escape",
+                details: ["success": "true", "result": "cleared_filter"]
+            )
         } else if !multiSelectedOriginalIndices.isEmpty {
             multiSelectedOriginalIndices = []
             updateSelection()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "escape",
+                details: ["success": "true", "result": "cleared_multi_selection"]
+            )
         } else {
             dismiss(sessionID: sessionID)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "escape",
+                details: ["success": "true", "result": "dismissed"]
+            )
         }
     }
 
@@ -492,8 +710,29 @@ public final class HUDPanel {
         }
 
         guard isVisible else { return }
+        let previousLength = filterText.count
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "filter_append",
+            details: ["previousLength": "\(previousLength)"]
+        )
         filterText.append(character)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "filter_append",
+            details: ["step": "refresh_rows", "newLength": "\(filterText.count)"]
+        )
         refreshRowsForFilter()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "filter_append",
+            details: [
+                "success": "true",
+                "previousLength": "\(previousLength)",
+                "newLength": "\(filterText.count)",
+                "matchCount": "\(displayedIndices().count)"
+            ]
+        )
     }
 
     public func deleteFilterCharacter() {
@@ -502,9 +741,42 @@ public final class HUDPanel {
             return
         }
 
-        guard !filterText.isEmpty else { return }
+        guard !filterText.isEmpty else {
+            DiagnosticsLogbook.shared.actionInput(
+                feature: "hud",
+                action: "filter_delete",
+                details: ["previousLength": "0"]
+            )
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "filter_delete",
+                details: ["success": "false", "reason": "empty_filter"]
+            )
+            return
+        }
+        let previousLength = filterText.count
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "filter_delete",
+            details: ["previousLength": "\(previousLength)"]
+        )
         filterText.removeLast()
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "hud",
+            action: "filter_delete",
+            details: ["step": "refresh_rows", "newLength": "\(filterText.count)"]
+        )
         refreshRowsForFilter()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "filter_delete",
+            details: [
+                "success": "true",
+                "previousLength": "\(previousLength)",
+                "newLength": "\(filterText.count)",
+                "matchCount": "\(displayedIndices().count)"
+            ]
+        )
     }
 
     public func clearFilter() {
@@ -513,8 +785,18 @@ public final class HUDPanel {
             return
         }
 
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "filter_clear",
+            details: ["previousLength": "\(filterText.count)"]
+        )
         filterText = ""
         refreshRowsForFilter()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "filter_clear",
+            details: ["success": "true", "matchCount": "\(displayedIndices().count)"]
+        )
     }
 
     // MARK: - Rows
@@ -671,6 +953,10 @@ public final class HUDPanel {
             width: width,
             height: height
         )
+    }
+
+    private static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 
     private func clearDragRestoreSnapshot() {

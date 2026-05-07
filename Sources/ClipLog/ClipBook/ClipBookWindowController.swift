@@ -71,6 +71,11 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     // MARK: - Init
 
     public init(store: ClipStore, previousApp: NSRunningApplication? = nil) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "open",
+            details: ["previousApp": previousApp?.bundleIdentifier ?? "unknown"]
+        )
         self.store = store
         self.previousApp = previousApp
         let window = Self.makeWindow()
@@ -78,6 +83,7 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         window.delegate = self
         buildUI()
         reloadData()
+        DiagnosticsLogbook.shared.actionOutput(feature: "history_window", action: "open", details: ["success": "true"])
     }
 
     @available(*, unavailable)
@@ -356,11 +362,22 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
 
     /// Reload all entries from the store. Safe to call from any queue.
     public func reloadData() {
+        DiagnosticsLogbook.shared.actionInput(feature: "history_window", action: "reload")
         let entries = (try? store?.all()) ?? []
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "history_window",
+                action: "reload",
+                details: ["step": "apply_entries", "entryCount": "\(entries.count)"]
+            )
             self.allEntries = entries
             self.applyFilters()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "history_window",
+                action: "reload",
+                details: ["success": "true", "entryCount": "\(entries.count)"]
+            )
         }
     }
 
@@ -372,24 +389,69 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
 
     @objc private func filterChanged(_ sender: NSPopUpButton) {
         let idx = sender.indexOfSelectedItem
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "filter_type",
+            details: ["selectedIndex": "\(idx)"]
+        )
         selectedType = Self.filterTypes[safe: idx] ?? nil
         applyFilters()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "filter_type",
+            details: [
+                "success": "true",
+                "selectedType": selectedType?.rawValue ?? "all",
+                "resultCount": "\(displayedEntries.count)"
+            ]
+        )
     }
 
     @objc private func searchModeChanged(_ sender: NSSegmentedControl) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "search_mode",
+            details: ["selectedSegment": "\(sender.selectedSegment)"]
+        )
         searchMode = sender.selectedSegment == 1 ? .semantic : .text
         applyFilters()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "search_mode",
+            details: ["success": "true", "mode": searchMode == .semantic ? "semantic" : "text"]
+        )
     }
 
     private func applyFilters() {
         let q = searchQuery.trimmingCharacters(in: .whitespaces)
+        let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "apply_filters",
+            details: [
+                "queryLength": "\(q.count)",
+                "mode": searchMode == .semantic ? "semantic" : "text",
+                "selectedType": selectedType?.rawValue ?? "all",
+                "entryCount": "\(allEntries.count)"
+            ]
+        )
 
         // Semantic search: when a query is present and mode == .semantic, rank by NL similarity.
         if searchMode == .semantic, !q.isEmpty {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "history_window",
+                action: "apply_filters",
+                details: ["step": "semantic_search"]
+            )
             applySemanticSearch(query: q)
             return
         }
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "history_window",
+            action: "apply_filters",
+            details: ["step": "keyword_filter"]
+        )
         let lowerQ = q.lowercased()
         displayedEntries = allEntries.filter { entry in
             // Type filter
@@ -408,9 +470,19 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         collectionView.reloadData()
         emptyStateView.isHidden = !displayedEntries.isEmpty
         scrollView.isHidden     = displayedEntries.isEmpty
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "apply_filters",
+            details: [
+                "success": "true",
+                "resultCount": "\(displayedEntries.count)",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ]
+        )
     }
 
     private func applySemanticSearch(query: String) {
+        let startedAt = Date()
         // Run entirely on background — NLEmbedding is slow on first call.
         let typeFilter = selectedType
         let capturedStore = store
@@ -450,6 +522,16 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
                 self.collectionView.reloadData()
                 self.emptyStateView.isHidden = !ranked.isEmpty
                 self.scrollView.isHidden     = ranked.isEmpty
+                DiagnosticsLogbook.shared.actionOutput(
+                    feature: "history_window",
+                    action: "apply_filters",
+                    details: [
+                        "success": "true",
+                        "mode": "semantic",
+                        "resultCount": "\(ranked.count)",
+                        "durationMs": "\(Self.milliseconds(since: startedAt))"
+                    ]
+                )
             }
         }
     }
@@ -469,11 +551,18 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     // MARK: - Window delegate
 
     public func windowDidResize(_ notification: Notification) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "resize",
+            details: ["width": "\(Int(window?.frame.width ?? 0))", "height": "\(Int(window?.frame.height ?? 0))"]
+        )
         updateItemSize()
         flowLayout.invalidateLayout()
+        DiagnosticsLogbook.shared.actionOutput(feature: "history_window", action: "resize", details: ["success": "true"])
     }
 
     public func windowWillClose(_ notification: Notification) {
+        DiagnosticsLogbook.shared.actionOutput(feature: "history_window", action: "close", details: ["success": "true"])
         onClose?()
     }
 
@@ -522,14 +611,33 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     }
 
     @objc private func refreshTapped() {
+        DiagnosticsLogbook.shared.actionInput(feature: "history_window", action: "refresh")
         reloadData()
+        DiagnosticsLogbook.shared.actionOutput(feature: "history_window", action: "refresh", details: ["success": "true"])
     }
 
     @objc private func queuePasteTapped() {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "queue_paste",
+            details: ["selectedCount": "\(collectionView.selectionIndexPaths.count)"]
+        )
         let selected = collectionView.selectionIndexPaths
             .sorted { $0.item < $1.item }
             .compactMap { displayedEntries[safe: $0.item] }
-        guard !selected.isEmpty else { return }
+        guard !selected.isEmpty else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "history_window",
+                action: "queue_paste",
+                details: ["success": "false", "reason": "empty_selection"]
+            )
+            return
+        }
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "history_window",
+            action: "queue_paste",
+            details: ["step": "enqueue", "entryCount": "\(selected.count)"]
+        )
         PasteQueue.shared.enqueue(selected)
         window?.orderOut(nil)
         // Re-activate the previous app so the user's ⌘V presses land in the right place.
@@ -539,6 +647,11 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
                 app.activate(options: [.activateIgnoringOtherApps])
             }
         }
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "queue_paste",
+            details: ["success": "true", "entryCount": "\(selected.count)"]
+        )
     }
 
     // MARK: - Paste
@@ -553,6 +666,16 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     ///   4. Wait one run-loop tick for the activation to propagate.
     ///   5. Synthesise ⌘V at .cgSessionEventTap — it now lands in the right app.
     private func paste(entry: ClipEntry) {
+        let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "paste",
+            details: [
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID,
+                "targetApp": previousApp?.bundleIdentifier ?? "unknown"
+            ]
+        )
         DiagnosticsLogbook.shared.record(
             "paste_requested",
             category: "interaction",
@@ -564,9 +687,11 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
             ]
         )
         // Step 1: write to pasteboard while we still have focus.
+        DiagnosticsLogbook.shared.actionProcess(feature: "history_window", action: "paste", details: ["step": "write_pasteboard"])
         ClipPasteboardWriter.write(entry)
 
         // Step 2: hide window.
+        DiagnosticsLogbook.shared.actionProcess(feature: "history_window", action: "paste", details: ["step": "hide_window"])
         window?.orderOut(nil)
 
         // Step 3+4+5: re-activate target app, then synthesise paste.
@@ -578,6 +703,14 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
             // Small second delay so the activation window change commits before ⌘V.
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 self.synthesiseCmdV()
+                DiagnosticsLogbook.shared.actionOutput(
+                    feature: "history_window",
+                    action: "paste",
+                    details: [
+                        "success": "true",
+                        "durationMs": "\(Self.milliseconds(since: startedAt))"
+                    ]
+                )
             }
         }
     }
@@ -599,6 +732,12 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     }
 
     private func copy(entry: ClipEntry) {
+        let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "copy",
+            details: ["entryType": entry.contentType.rawValue, "entrySourceApp": entry.sourceBundleID]
+        )
         DiagnosticsLogbook.shared.record(
             "copy_requested",
             category: "interaction",
@@ -608,23 +747,59 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
                 "entrySourceApp": entry.sourceBundleID
             ]
         )
+        DiagnosticsLogbook.shared.actionProcess(feature: "history_window", action: "copy", details: ["step": "write_pasteboard"])
         ClipPasteboardWriter.write(entry)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "copy",
+            details: ["success": "true", "durationMs": "\(Self.milliseconds(since: startedAt))"]
+        )
     }
 
     private func togglePin(entry: ClipEntry, pinned: Bool) {
-        try? store?.pin(entry.id, pinned: pinned)
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "toggle_pin",
+            details: ["entryType": entry.contentType.rawValue, "pinned": "\(pinned)"]
+        )
+        do {
+            try store?.pin(entry.id, pinned: pinned)
+        } catch {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "history_window",
+                action: "toggle_pin",
+                details: ["success": "false", "reason": "store_error"]
+            )
+            return
+        }
         if let idx = allEntries.firstIndex(where: { $0.id == entry.id }) {
             allEntries[idx].isPinned = pinned
         }
         if let idx = displayedEntries.firstIndex(where: { $0.id == entry.id }) {
             displayedEntries[idx].isPinned = pinned
         }
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "toggle_pin",
+            details: ["success": "true", "pinned": "\(pinned)"]
+        )
     }
 
     private func delete(entryID: UUID) {
-        try? store?.delete(entryID)
+        DiagnosticsLogbook.shared.actionInput(feature: "history_window", action: "delete", details: ["entryID": entryID.uuidString])
+        do {
+            try store?.delete(entryID)
+        } catch {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "history_window",
+                action: "delete",
+                details: ["success": "false", "reason": "store_error"]
+            )
+            return
+        }
         allEntries.removeAll { $0.id == entryID }
         applyFilters()
+        DiagnosticsLogbook.shared.actionOutput(feature: "history_window", action: "delete", details: ["success": "true"])
     }
 }
 
@@ -668,6 +843,16 @@ extension ClipBookWindowController: NSCollectionViewDelegate {
         _ collectionView: NSCollectionView,
         didSelectItemsAt indexPaths: Set<IndexPath>
     ) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "select_cards",
+            details: ["selectedCount": "\(indexPaths.count)"]
+        )
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "select_cards",
+            details: ["success": "true", "selectedCount": "\(collectionView.selectionIndexPaths.count)"]
+        )
         // Selection visualised by ClipBookCardItem.isSelected setter — nothing extra needed.
     }
 
@@ -688,19 +873,41 @@ extension ClipBookWindowController: NSCollectionViewDelegate {
         indexPath: IndexPath,
         dropOperation: NSCollectionView.DropOperation
     ) -> Bool {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "reorder_drop",
+            details: ["destinationIndex": "\(indexPath.item)"]
+        )
         // Pinned-item reordering: find the dragged entry and move it.
         // (Full persistence of order would require an order column in the DB;
         //  here we do an in-memory re-sort and update the view.)
         guard let pb = draggingInfo.draggingPasteboard.string(forType: .string),
               let srcIdx = displayedEntries.firstIndex(where: { $0.id.uuidString == pb })
-        else { return false }
+        else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "history_window",
+                action: "reorder_drop",
+                details: ["success": "false", "reason": "missing_source"]
+            )
+            return false
+        }
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "history_window",
+            action: "reorder_drop",
+            details: ["step": "move_entry", "sourceIndex": "\(srcIdx)", "destinationIndex": "\(indexPath.item)"]
+        )
         var entries = displayedEntries
         let moving  = entries.remove(at: srcIdx)
         let dest    = min(indexPath.item, entries.count)
         entries.insert(moving, at: dest)
         displayedEntries = entries
         collectionView.reloadData()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "reorder_drop",
+            details: ["success": "true", "sourceIndex": "\(srcIdx)", "destinationIndex": "\(dest)"]
+        )
         return true
     }
 }
@@ -733,12 +940,28 @@ extension ClipBookWindowController: NSSearchFieldDelegate {
 
     public func controlTextDidChange(_ obj: Notification) {
         guard let field = obj.object as? NSSearchField else { return }
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "history_window",
+            action: "search_text",
+            details: ["queryLength": "\(field.stringValue.count)"]
+        )
         searchQuery = field.stringValue
         applyFilters()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "history_window",
+            action: "search_text",
+            details: ["success": "true", "queryLength": "\(searchQuery.count)"]
+        )
     }
 }
 
 // MARK: - Safe subscript helper
+
+private extension ClipBookWindowController {
+    static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
+    }
+}
 
 private extension Array {
     subscript(safe index: Index) -> Element? {

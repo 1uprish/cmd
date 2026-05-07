@@ -25,6 +25,12 @@ public final class ClipLogSettings: ObservableObject {
     @Published public var holdThresholdMs: Int {
         didSet {
             let clamped = holdThresholdMs.clamped(to: 100...500)
+            logSettingChange(
+                name: Keys.holdThresholdMs,
+                oldValue: "\(oldValue)",
+                newValue: "\(clamped)",
+                normalized: clamped != holdThresholdMs
+            )
             UserDefaults.standard.set(clamped, forKey: Keys.holdThresholdMs)
             if clamped != holdThresholdMs { holdThresholdMs = clamped }
         }
@@ -32,25 +38,43 @@ public final class ClipLogSettings: ObservableObject {
 
     @Published public var retentionDays: Int {
         didSet {
+            logSettingChange(name: Keys.retentionDays, oldValue: "\(oldValue)", newValue: "\(retentionDays)")
             UserDefaults.standard.set(retentionDays, forKey: Keys.retentionDays)
         }
     }
 
     @Published public var sensitiveRetentionMinutes: Int {
         didSet {
+            logSettingChange(
+                name: Keys.sensitiveRetentionMinutes,
+                oldValue: "\(oldValue)",
+                newValue: "\(sensitiveRetentionMinutes)"
+            )
             UserDefaults.standard.set(sensitiveRetentionMinutes, forKey: Keys.sensitiveRetentionMinutes)
         }
     }
 
     @Published public var userExcludedBundles: [String] {
         didSet {
+            logSettingChange(
+                name: Keys.userExcludedBundles,
+                oldValue: "\(oldValue.count)",
+                newValue: "\(userExcludedBundles.count)",
+                extra: ["valueKind": "count"]
+            )
             UserDefaults.standard.set(userExcludedBundles, forKey: Keys.userExcludedBundles)
         }
     }
 
     @Published public var launchAtLogin: Bool {
         didSet {
+            logSettingChange(name: Keys.launchAtLogin, oldValue: "\(oldValue)", newValue: "\(launchAtLogin)")
             UserDefaults.standard.set(launchAtLogin, forKey: Keys.launchAtLogin)
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "settings",
+                action: Keys.launchAtLogin,
+                details: ["step": "sync_launch_agent", "enabled": "\(launchAtLogin)"]
+            )
             LaunchAtLoginManager.setEnabled(launchAtLogin)
         }
     }
@@ -59,6 +83,12 @@ public final class ClipLogSettings: ObservableObject {
     @Published public var hudOpacity: Double {
         didSet {
             let clamped = hudOpacity.clamped(to: 0.55...1.0)
+            logSettingChange(
+                name: Keys.hudOpacity,
+                oldValue: String(format: "%.2f", oldValue),
+                newValue: String(format: "%.2f", clamped),
+                normalized: clamped != hudOpacity
+            )
             UserDefaults.standard.set(clamped, forKey: Keys.hudOpacity)
             if clamped != hudOpacity { hudOpacity = clamped }
         }
@@ -68,6 +98,12 @@ public final class ClipLogSettings: ObservableObject {
     @Published public var hudSizeScale: Double {
         didSet {
             let clamped = hudSizeScale.clamped(to: 0.85...1.20)
+            logSettingChange(
+                name: Keys.hudSizeScale,
+                oldValue: String(format: "%.2f", oldValue),
+                newValue: String(format: "%.2f", clamped),
+                normalized: clamped != hudSizeScale
+            )
             UserDefaults.standard.set(clamped, forKey: Keys.hudSizeScale)
             if clamped != hudSizeScale { hudSizeScale = clamped }
         }
@@ -77,6 +113,12 @@ public final class ClipLogSettings: ObservableObject {
         didSet {
             let allowed = ["magnetic", "genie", "cascade", "calm"]
             let value = allowed.contains(hudAnimationStyle) ? hudAnimationStyle : "magnetic"
+            logSettingChange(
+                name: Keys.hudAnimationStyle,
+                oldValue: oldValue,
+                newValue: value,
+                normalized: value != hudAnimationStyle
+            )
             UserDefaults.standard.set(value, forKey: Keys.hudAnimationStyle)
             if value != hudAnimationStyle { hudAnimationStyle = value }
         }
@@ -84,24 +126,42 @@ public final class ClipLogSettings: ObservableObject {
 
     @Published public var onboardingCompleted: Bool {
         didSet {
+            logSettingChange(name: Keys.onboardingCompleted, oldValue: "\(oldValue)", newValue: "\(onboardingCompleted)")
             UserDefaults.standard.set(onboardingCompleted, forKey: Keys.onboardingCompleted)
         }
     }
 
     @Published public var remoteDiagnosticsEnabled: Bool {
         didSet {
+            logSettingChange(
+                name: Keys.remoteDiagnosticsEnabled,
+                oldValue: "\(oldValue)",
+                newValue: "\(remoteDiagnosticsEnabled)"
+            )
             UserDefaults.standard.set(remoteDiagnosticsEnabled, forKey: Keys.remoteDiagnosticsEnabled)
         }
     }
 
     @Published public var remoteDiagnosticsEndpoint: String {
         didSet {
+            logSettingChange(
+                name: Keys.remoteDiagnosticsEndpoint,
+                oldValue: oldValue.isEmpty ? "empty" : "present",
+                newValue: remoteDiagnosticsEndpoint.isEmpty ? "empty" : "present",
+                extra: ["valueKind": "presence"]
+            )
             UserDefaults.standard.set(remoteDiagnosticsEndpoint, forKey: Keys.remoteDiagnosticsEndpoint)
         }
     }
 
     @Published public var remoteDiagnosticsToken: String {
         didSet {
+            logSettingChange(
+                name: Keys.remoteDiagnosticsToken,
+                oldValue: oldValue.isEmpty ? "empty" : "present",
+                newValue: remoteDiagnosticsToken.isEmpty ? "empty" : "present",
+                extra: ["valueKind": "presence"]
+            )
             UserDefaults.standard.set(remoteDiagnosticsToken, forKey: Keys.remoteDiagnosticsToken)
         }
     }
@@ -136,6 +196,35 @@ public final class ClipLogSettings: ObservableObject {
         remoteDiagnosticsEnabled = defaults.bool(forKey: Keys.remoteDiagnosticsEnabled)
         remoteDiagnosticsEndpoint = defaults.string(forKey: Keys.remoteDiagnosticsEndpoint) ?? ""
         remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
+    }
+
+    private func logSettingChange(
+        name: String,
+        oldValue: String,
+        newValue: String,
+        normalized: Bool = false,
+        extra: [String: String] = [:]
+    ) {
+        var details = [
+            "setting": name,
+            "oldValue": oldValue,
+            "newValue": newValue,
+            "normalized": "\(normalized)"
+        ]
+        for (key, value) in extra {
+            details[key] = value
+        }
+        DiagnosticsLogbook.shared.actionInput(feature: "settings", action: name, details: details)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "settings",
+            action: name,
+            details: details.merging(["step": "persist_defaults"], uniquingKeysWith: { _, new in new })
+        )
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "settings",
+            action: name,
+            details: details.merging(["success": "true"], uniquingKeysWith: { _, new in new })
+        )
     }
 }
 

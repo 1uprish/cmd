@@ -51,27 +51,81 @@ public final class SlotManager: @unchecked Sendable {
     /// Paste a specific entry directly (safe: not affected by concurrent slot shifts).
     @discardableResult
     public func paste(entry: ClipEntry) -> Bool {
+        let startedAt = Date()
+        let details = singleEntryDetails(source: "slot_entry", entry: entry)
+        DiagnosticsLogbook.shared.actionInput(feature: "paste", action: "slot_entry", details: details)
         logPasteAttempt(source: "slot_entry", entry: entry)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_entry",
+            details: details.merging(["step": "write_pasteboard"], uniquingKeysWith: { _, new in new })
+        )
         ClipPasteboardWriter.write(entry)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_entry",
+            details: details.merging(["step": "synthesize_cmd_v"], uniquingKeysWith: { _, new in new })
+        )
         synthesizeCmdV()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "paste",
+            action: "slot_entry",
+            details: details.merging([
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ], uniquingKeysWith: { _, new in new })
+        )
         return true
     }
 
     @discardableResult
     public func paste(entries: [ClipEntry]) -> Bool {
-        guard !entries.isEmpty else { return false }
+        guard !entries.isEmpty else {
+            let details = ["source": "slot_entries", "entryCount": "0"]
+            DiagnosticsLogbook.shared.actionInput(feature: "paste", action: "slot_entries", details: details)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "paste",
+                action: "slot_entries",
+                details: details.merging(["success": "false", "reason": "empty"], uniquingKeysWith: { _, new in new })
+            )
+            return false
+        }
         if entries.count == 1 {
             return paste(entry: entries[0])
         }
+        let startedAt = Date()
+        let details = batchEntryDetails(source: "slot_entries", entries: entries)
+        DiagnosticsLogbook.shared.actionInput(feature: "paste", action: "slot_entries", details: details)
         logBatchPasteAttempt(source: "slot_entries", entries: entries)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_entries",
+            details: details.merging(["step": "write_pasteboard"], uniquingKeysWith: { _, new in new })
+        )
         ClipPasteboardWriter.write(entries)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_entries",
+            details: details.merging(["step": "synthesize_cmd_v"], uniquingKeysWith: { _, new in new })
+        )
         synthesizeCmdV()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "paste",
+            action: "slot_entries",
+            details: details.merging([
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ], uniquingKeysWith: { _, new in new })
+        )
         return true
     }
 
     /// Copy a specific entry into the system pasteboard without synthesising paste.
     @discardableResult
     public func copy(entry: ClipEntry) -> Bool {
+        let startedAt = Date()
+        let details = singleEntryDetails(source: "slot_entry", entry: entry)
+        DiagnosticsLogbook.shared.actionInput(feature: "copy", action: "slot_entry", details: details)
         DiagnosticsLogbook.shared.record(
             "copy_requested",
             category: "interaction",
@@ -80,16 +134,41 @@ public final class SlotManager: @unchecked Sendable {
                 "sourceApp": entry.sourceBundleID
             ]
         )
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "copy",
+            action: "slot_entry",
+            details: details.merging(["step": "write_pasteboard"], uniquingKeysWith: { _, new in new })
+        )
         ClipPasteboardWriter.write(entry)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "copy",
+            action: "slot_entry",
+            details: details.merging([
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ], uniquingKeysWith: { _, new in new })
+        )
         return true
     }
 
     @discardableResult
     public func copy(entries: [ClipEntry]) -> Bool {
-        guard !entries.isEmpty else { return false }
+        guard !entries.isEmpty else {
+            let details = ["source": "slot_entries", "entryCount": "0"]
+            DiagnosticsLogbook.shared.actionInput(feature: "copy", action: "slot_entries", details: details)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "copy",
+                action: "slot_entries",
+                details: details.merging(["success": "false", "reason": "empty"], uniquingKeysWith: { _, new in new })
+            )
+            return false
+        }
         if entries.count == 1 {
             return copy(entry: entries[0])
         }
+        let startedAt = Date()
+        let details = batchEntryDetails(source: "slot_entries", entries: entries)
+        DiagnosticsLogbook.shared.actionInput(feature: "copy", action: "slot_entries", details: details)
         DiagnosticsLogbook.shared.record(
             "copy_requested",
             category: "interaction",
@@ -99,18 +178,65 @@ public final class SlotManager: @unchecked Sendable {
                 "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ",")
             ]
         )
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "copy",
+            action: "slot_entries",
+            details: details.merging(["step": "write_pasteboard"], uniquingKeysWith: { _, new in new })
+        )
         ClipPasteboardWriter.write(entries)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "copy",
+            action: "slot_entries",
+            details: details.merging([
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ], uniquingKeysWith: { _, new in new })
+        )
         return true
     }
 
     @discardableResult
     public func paste(slotIndex: Int) -> Bool {
         let slots = currentSlots
-        guard slotIndex >= 0, slotIndex < slots.count else { return false }
+        let inputDetails = [
+            "source": "slot_index",
+            "slotIndex": "\(slotIndex)",
+            "slotCount": "\(slots.count)"
+        ]
+        DiagnosticsLogbook.shared.actionInput(feature: "paste", action: "slot_index", details: inputDetails)
+        guard slotIndex >= 0, slotIndex < slots.count else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "paste",
+                action: "slot_index",
+                details: inputDetails.merging(["success": "false", "reason": "out_of_range"], uniquingKeysWith: { _, new in new })
+            )
+            return false
+        }
+        let startedAt = Date()
         let entry = slots[slotIndex]
+        let details = singleEntryDetails(source: "slot_index", entry: entry)
+            .merging(inputDetails, uniquingKeysWith: { current, _ in current })
         logPasteAttempt(source: "slot_index", entry: entry)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_index",
+            details: details.merging(["step": "write_pasteboard"], uniquingKeysWith: { _, new in new })
+        )
         ClipPasteboardWriter.write(entry)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste",
+            action: "slot_index",
+            details: details.merging(["step": "synthesize_cmd_v"], uniquingKeysWith: { _, new in new })
+        )
         synthesizeCmdV()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "paste",
+            action: "slot_index",
+            details: details.merging([
+                "success": "true",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ], uniquingKeysWith: { _, new in new })
+        )
         return true
     }
 
@@ -164,6 +290,25 @@ public final class SlotManager: @unchecked Sendable {
                 "targetApp": Self.frontmostBundleIdentifier()
             ]
         )
+    }
+
+    private func singleEntryDetails(source: String, entry: ClipEntry) -> [String: String] {
+        [
+            "source": source,
+            "entryType": entry.contentType.rawValue,
+            "entrySourceApp": entry.sourceBundleID,
+            "targetApp": Self.frontmostBundleIdentifier()
+        ]
+    }
+
+    private func batchEntryDetails(source: String, entries: [ClipEntry]) -> [String: String] {
+        [
+            "source": source,
+            "entryType": "multiple",
+            "entryCount": "\(entries.count)",
+            "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ","),
+            "targetApp": Self.frontmostBundleIdentifier()
+        ]
     }
 
     private static func frontmostBundleIdentifier() -> String {

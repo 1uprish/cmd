@@ -22,6 +22,7 @@ public final class MenuBarController: NSObject {
     }
 
     public func setup() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "setup")
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
 
@@ -34,6 +35,7 @@ public final class MenuBarController: NSObject {
         }
 
         item.menu = buildMenu()
+        DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "setup", details: ["step": "menu_built"])
 
         let nc = NotificationCenter.default
 
@@ -61,6 +63,7 @@ public final class MenuBarController: NSObject {
             guard let self else { return }
             try? self.store.purgeExpired(before: .distantFuture)
         }
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "setup", details: ["success": "true"])
     }
 
     deinit {
@@ -148,21 +151,42 @@ public final class MenuBarController: NSObject {
     // MARK: - Actions
 
     @objc private func showHistory() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "show_history")
         // Capture the app that was active BEFORE we steal focus —
         // ClipBookWindowController needs it to re-activate the right target on paste.
         let previousApp = NSWorkspace.shared.frontmostApplication
 
         if let existing = clipBookController, existing.window?.isVisible == true {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "menu_bar",
+                action: "show_history",
+                details: ["step": "focus_existing"]
+            )
             existing.window?.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "menu_bar",
+                action: "show_history",
+                details: ["success": "true", "window": "existing"]
+            )
             return
         }
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "menu_bar",
+            action: "show_history",
+            details: ["step": "create_window", "previousApp": previousApp?.bundleIdentifier ?? "unknown"]
+        )
         let controller = ClipBookWindowController(store: store, previousApp: previousApp)
         controller.onClose = { [weak self] in self?.clipBookController = nil }
         clipBookController = controller
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "menu_bar",
+            action: "show_history",
+            details: ["success": "true", "window": "new"]
+        )
     }
 
     /// Called whenever a new entry is added so the open history window stays current.
@@ -171,11 +195,15 @@ public final class MenuBarController: NSObject {
     }
 
     @objc private func showFeatures() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "show_features")
         if let existing = featuresWindow, existing.isVisible {
+            DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "show_features", details: ["step": "focus_existing"])
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "show_features", details: ["success": "true", "window": "existing"])
             return
         }
+        DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "show_features", details: ["step": "create_window"])
         let hosting = NSHostingController(rootView: FeaturesView())
         let window = NSWindow(contentViewController: hosting)
         window.title = "cmd — Features & Guide"
@@ -185,19 +213,26 @@ public final class MenuBarController: NSObject {
         featuresWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "show_features", details: ["success": "true", "window": "new"])
     }
 
     @objc private func showOnboarding() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "show_onboarding")
         NotificationCenter.default.post(name: .cmdShowOnboarding, object: nil)
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "show_onboarding", details: ["success": "true"])
     }
 
     @objc private func showSettings() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "show_settings")
         if let existing = settingsWindow, existing.isVisible {
+            DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "show_settings", details: ["step": "focus_existing"])
             existing.makeKeyAndOrderFront(nil)
             NSApp.activate(ignoringOtherApps: true)
+            DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "show_settings", details: ["success": "true", "window": "existing"])
             return
         }
 
+        DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "show_settings", details: ["step": "create_window"])
         let hosting = NSHostingController(rootView: SettingsView())
         hosting.sizingOptions = [.minSize]
         let window = NSWindow(contentViewController: hosting)
@@ -209,10 +244,17 @@ public final class MenuBarController: NSObject {
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "show_settings", details: ["success": "true", "window": "new"])
     }
 
     @objc private func openDiagnosticsLog() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "open_diagnostics_log")
         let url = DiagnosticsLogbook.shared.logFileURL
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "menu_bar",
+            action: "open_diagnostics_log",
+            details: ["step": "ensure_file"]
+        )
         try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -222,9 +264,11 @@ public final class MenuBarController: NSObject {
             DiagnosticsLogbook.shared.record("diagnostics_log_created", category: "diagnostics")
         }
         NSWorkspace.shared.activateFileViewerSelecting([url])
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "open_diagnostics_log", details: ["success": "true"])
     }
 
     @objc private func clearAllHistory() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "clear_all_history")
         let alert = NSAlert()
         alert.messageText = "Clear all clipboard history?"
         alert.informativeText = "Pinned items will not be removed. This cannot be undone."
@@ -233,11 +277,29 @@ public final class MenuBarController: NSObject {
         alert.addButton(withTitle: "Cancel")
         alert.buttons.first?.hasDestructiveAction = true
 
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        try? store.purgeExpired(before: .distantFuture)
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "menu_bar",
+                action: "clear_all_history",
+                details: ["success": "false", "reason": "cancelled"]
+            )
+            return
+        }
+        DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "clear_all_history", details: ["step": "purge_store"])
+        do {
+            try store.purgeExpired(before: .distantFuture)
+        } catch {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "menu_bar",
+                action: "clear_all_history",
+                details: ["success": "false", "reason": "store_error"]
+            )
+            return
+        }
 
         // Rebuild the menu so the Recent section reflects the cleared state.
         statusItem?.menu = buildMenu()
+        DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "clear_all_history", details: ["success": "true"])
     }
 
     // MARK: - Helpers

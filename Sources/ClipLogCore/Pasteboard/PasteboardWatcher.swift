@@ -169,14 +169,34 @@ public final class PasteboardWatcher: @unchecked Sendable {
     private var imageOCREnabled = false
 
     public func updateUserExcludedBundles(_ bundles: Set<String>) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "pasteboard",
+            action: "update_excluded_bundles",
+            details: ["bundleCount": "\(bundles.count)"]
+        )
         queue.async {
             self.userExcludedBundles = bundles
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "update_excluded_bundles",
+                details: ["success": "true", "bundleCount": "\(bundles.count)"]
+            )
         }
     }
 
     public func updateImageOCREnabled(_ enabled: Bool) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "pasteboard",
+            action: "update_image_ocr",
+            details: ["enabled": "\(enabled)"]
+        )
         queue.async {
             self.imageOCREnabled = enabled
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "update_image_ocr",
+                details: ["success": "true", "enabled": "\(enabled)"]
+            )
         }
     }
 
@@ -185,19 +205,23 @@ public final class PasteboardWatcher: @unchecked Sendable {
     // MARK: - Start / stop
 
     public func start() {
+        DiagnosticsLogbook.shared.actionInput(feature: "pasteboard", action: "start_watcher")
         DiagnosticsLogbook.shared.record("pasteboard_watcher_started", category: "pasteboard")
         let t = DispatchSource.makeTimerSource(queue: queue)
         t.schedule(deadline: .now(), repeating: Self.pollInterval)
         t.setEventHandler { [weak self] in self?.poll() }
         t.resume()
         self.timer = t
+        DiagnosticsLogbook.shared.actionOutput(feature: "pasteboard", action: "start_watcher", details: ["success": "true"])
     }
 
     public func stop() {
+        DiagnosticsLogbook.shared.actionInput(feature: "pasteboard", action: "stop_watcher")
         DiagnosticsLogbook.shared.record("pasteboard_watcher_stopped", category: "pasteboard")
         timer?.cancel()
         timer = nil
         shutdownAppendSession()
+        DiagnosticsLogbook.shared.actionOutput(feature: "pasteboard", action: "stop_watcher", details: ["success": "true"])
     }
 
     // MARK: - Poll
@@ -228,10 +252,20 @@ public final class PasteboardWatcher: @unchecked Sendable {
         let pb = NSPasteboard.general
         let current = pb.changeCount
         guard current != lastChangeCount else { return }
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "pasteboard",
+            action: "poll_change",
+            details: ["changeCount": "\(current)"]
+        )
         lastChangeCount = current
 
         // Password managers write NSPasteboardTypeConcealed before the real data.
         if pb.types?.contains(.concealed) == true {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["success": "false", "reason": "concealed_type"]
+            )
             return
         }
 
@@ -240,6 +274,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
         if Self.knownPasswordManagers.contains(bundle) ||
            Self.knownTransientSources.contains(bundle) ||
            userExcludedBundles.contains(bundle) {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["success": "false", "reason": "excluded_source", "sourceApp": bundle]
+            )
             return
         }
 
@@ -248,21 +287,48 @@ public final class PasteboardWatcher: @unchecked Sendable {
         // targets can also receive the image objects.
         if appendSession != nil {
             let appendStartedAt = Date()
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["step": "append_merge", "sourceApp": bundle]
+            )
             mergeCurrentPasteboardIntoAppendSession(pb)
             appendMs = Self.milliseconds(since: appendStartedAt)
             entryType = "append"
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["success": "true", "result": "append", "durationMs": "\(Self.milliseconds(since: startedAt))"]
+            )
             return
         }
 
         let classifiedType = classifyType(pb)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "pasteboard",
+            action: "poll_change",
+            details: ["step": "classify", "entryType": classifiedType.rawValue, "sourceApp": bundle]
+        )
         if classifiedType == .image {
             entryType = "image_deferred"
             scheduleImageCapture(sourceBundle: bundle, changeCount: current)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["success": "true", "result": "image_deferred"]
+            )
             return
         }
 
         let buildStartedAt = Date()
-        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil, forcedType: classifiedType) else { return }
+        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil, forcedType: classifiedType) else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "pasteboard",
+                action: "poll_change",
+                details: ["success": "false", "reason": "empty_entry", "entryType": classifiedType.rawValue]
+            )
+            return
+        }
         buildEntryMs = Self.milliseconds(since: buildStartedAt)
         entryType = entry.contentType.rawValue
 
@@ -272,6 +338,17 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
 
         ingestMs = publishCapturedEntry(entry)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "pasteboard",
+            action: "poll_change",
+            details: [
+                "success": "true",
+                "entryType": entry.contentType.rawValue,
+                "buildEntryMs": "\(buildEntryMs)",
+                "ingestMs": "\(ingestMs)",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ]
+        )
     }
 
     private func scheduleImageCapture(sourceBundle: String, changeCount: Int) {
@@ -385,19 +462,33 @@ public final class PasteboardWatcher: @unchecked Sendable {
     // MARK: - Append session
 
     private func startAppendSession(expiringAfter timeout: TimeInterval) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "start_session",
+            details: ["timeoutSeconds": "\(Int(timeout))"]
+        )
         DiagnosticsLogbook.shared.record("append_started", category: "append")
         appendSessionTimeout = timeout
         appendSession = AppendSession(
             clips: [],
             expiresAt: Date().addingTimeInterval(timeout)
         )
+        DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "start_session", details: ["step": "publish_snapshot"])
         publishAppendSnapshot()
         scheduleAppendExpiry(after: timeout)
+        DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "start_session", details: ["success": "true"])
     }
 
     private func mergeCurrentPasteboardIntoAppendSession(_ pb: NSPasteboard) {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "merge_current_pasteboard",
+            details: ["changeCount": "\(pb.changeCount)", "hasImage": "\(hasImageType(pb))"]
+        )
         if hasImageType(pb) {
+            DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "merge_current_pasteboard", details: ["step": "schedule_image_capture"])
             scheduleAppendImageCapture(changeCount: pb.changeCount)
+            DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "merge_current_pasteboard", details: ["success": "true", "result": "image_deferred"])
             return
         }
 
@@ -413,7 +504,17 @@ public final class PasteboardWatcher: @unchecked Sendable {
             textClip = nil
         }
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "append",
+            action: "merge_current_pasteboard",
+            details: ["step": "merge_text", "clipCount": textClip == nil ? "0" : "1"]
+        )
         mergeIntoAppendSession([textClip].compactMap { $0 }, pasteboard: pb)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "append",
+            action: "merge_current_pasteboard",
+            details: ["success": "true", "result": textClip == nil ? "ignored" : "merged"]
+        )
     }
 
     private func scheduleAppendImageCapture(changeCount: Int) {
@@ -487,6 +588,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
             )
 
             guard !clips.isEmpty else { return }
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "append",
+                action: "image_capture",
+                details: ["step": "merge_clips", "clipCount": "\(clips.count)"]
+            )
             self.mergeIntoAppendSession(clips, pasteboard: NSPasteboard.general)
         }
     }
@@ -496,8 +602,27 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func mergeIntoAppendSession(_ newClips: [AppendClip], pasteboard pb: NSPasteboard) {
-        guard var session = appendSession else { return }
-        guard !newClips.isEmpty else { return }
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "merge_clips",
+            details: ["incomingCount": "\(newClips.count)"]
+        )
+        guard var session = appendSession else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "merge_clips",
+                details: ["success": "false", "reason": "no_session"]
+            )
+            return
+        }
+        guard !newClips.isEmpty else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "merge_clips",
+                details: ["success": "false", "reason": "empty_input"]
+            )
+            return
+        }
 
         var didAppend = false
         for newClip in newClips {
@@ -510,18 +635,43 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         guard didAppend else {
             lastChangeCount = pb.changeCount
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "merge_clips",
+                details: ["success": "false", "reason": "duplicate_or_limit"]
+            )
             return
         }
 
         session.expiresAt = Date().addingTimeInterval(appendSessionTimeout)
         appendSession = session
 
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "append",
+            action: "merge_clips",
+            details: [
+                "step": "write_session",
+                "clipCount": "\(session.clips.count)",
+                "imageCount": "\(session.imageCount)",
+                "characters": "\(session.characterCount)"
+            ]
+        )
         writeAppendSession(session, to: pb)
         lastChangeCount = pb.changeCount
         lastClipString = session.combinedText
 
         publishAppendSnapshot()
         scheduleAppendExpiry(after: appendSessionTimeout)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "append",
+            action: "merge_clips",
+            details: [
+                "success": "true",
+                "clipCount": "\(session.clips.count)",
+                "imageCount": "\(session.imageCount)",
+                "characters": "\(session.characterCount)"
+            ]
+        )
     }
 
     private func shouldAppend(_ clip: AppendClip, to session: AppendSession) -> Bool {
@@ -571,8 +721,28 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     private func writeAppendSession(_ session: AppendSession, to pb: NSPasteboard) {
         let startedAt = Date()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "write_session",
+            details: [
+                "clipCount": "\(session.clips.count)",
+                "imageCount": "\(session.imageCount)",
+                "characters": "\(session.characterCount)"
+            ]
+        )
         defer {
             let elapsedMs = Self.milliseconds(since: startedAt)
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "write_session",
+                details: [
+                    "success": "true",
+                    "durationMs": "\(elapsedMs)",
+                    "clipCount": "\(session.clips.count)",
+                    "imageCount": "\(session.imageCount)",
+                    "characters": "\(session.characterCount)"
+                ]
+            )
             if elapsedMs >= 250 {
                 DiagnosticsLogbook.shared.record(
                     "slow_append_pasteboard_write",
@@ -589,9 +759,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
 
         pb.clearContents()
+        DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "write_session", details: ["step": "clear_pasteboard"])
 
         if session.hasText, session.hasImage,
            let mixedItem = mixedAppendPasteboardItem(for: session) {
+            DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "write_session", details: ["step": "write_mixed_item"])
             pb.writeObjects([mixedItem])
             return
         }
@@ -608,6 +780,11 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
 
         if !writers.isEmpty {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "append",
+                action: "write_session",
+                details: ["step": "write_objects", "writerCount": "\(writers.count)"]
+            )
             pb.writeObjects(writers)
         }
     }
@@ -622,12 +799,15 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func endAppendSession() {
+        DiagnosticsLogbook.shared.actionInput(feature: "append", action: "end_session")
         DiagnosticsLogbook.shared.record("append_ended", category: "append")
         appendExpiryWorkItem?.cancel()
         appendExpiryWorkItem = nil
+        DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "end_session", details: ["step": "commit_if_needed"])
         commitAppendSessionIfNeeded()
         appendSession = nil
         publishAppendSnapshot(isActive: false)
+        DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "end_session", details: ["success": "true"])
     }
 
     private func shutdownAppendSession() {
@@ -638,14 +818,34 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func commitAppendSessionIfNeeded() {
-        guard let session = appendSession, !session.clips.isEmpty else { return }
+        DiagnosticsLogbook.shared.actionInput(feature: "append", action: "commit_session")
+        guard let session = appendSession, !session.clips.isEmpty else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "commit_session",
+                details: ["success": "false", "reason": "empty_session"]
+            )
+            return
+        }
         guard let entry = buildEntry(
             from: NSPasteboard.general,
             sourceBundle: Bundle.main.bundleIdentifier ?? "com.cmd.app",
             windowTitle: "Append"
-        ) else { return }
+        ) else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "append",
+                action: "commit_session",
+                details: ["success": "false", "reason": "build_entry_failed"]
+            )
+            return
+        }
 
         _ = publishCapturedEntry(entry)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "append",
+            action: "commit_session",
+            details: ["success": "true", "entryType": entry.contentType.rawValue, "clipCount": "\(session.clips.count)"]
+        )
     }
 
     private func publishAppendSnapshot(isActive: Bool = true) {

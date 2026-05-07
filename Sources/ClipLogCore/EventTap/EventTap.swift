@@ -227,6 +227,15 @@ public final class ClipLogEventTap: @unchecked Sendable {
             let sessionID = makeSessionID()
             let timer = makeHoldTimer(sessionID: sessionID)
             let queuedPaste = !PasteQueue.shared.isEmpty
+            DiagnosticsLogbook.shared.actionInput(
+                feature: "event_tap",
+                action: "command_v_down",
+                details: [
+                    "sessionID": "\(sessionID)",
+                    "queuedPaste": "\(queuedPaste)",
+                    "holdThresholdMs": "\(Int(holdThreshold * 1000))"
+                ]
+            )
             state = .pendingHold(sessionID: sessionID, timer: timer, queuedPaste: queuedPaste, startedAt: Date())
             DiagnosticsLogbook.shared.record(
                 "command_v_pending",
@@ -237,23 +246,44 @@ public final class ClipLogEventTap: @unchecked Sendable {
                     "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "event_tap",
+                action: "command_v_down",
+                details: ["sessionID": "\(sessionID)", "step": "start_hold_timer"]
+            )
             timer.resume()
             return nil  // suppressed
 
         case .pendingHold:
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_down",
+                details: ["success": "true", "result": "repeat_suppressed"]
+            )
             return nil  // key-repeat — already timing, keep suppressing
 
         case .hudActive:
             // Safety net: if the HUD is no longer on screen (dismissed via a path
             // that bypassed hudDidDismiss), reset and process this ⌘V inline.
             if isStaleHUDState() {
+                DiagnosticsLogbook.shared.actionProcess(
+                    feature: "event_tap",
+                    action: "command_v_down",
+                    details: ["step": "stale_hud_recovered"]
+                )
                 return handleCommandVDown(event: event)
             }
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_down",
+                details: ["success": "true", "result": "hud_active_suppressed"]
+            )
             return nil
         }
     }
 
     private func handleCommandVUp(event: CGEvent) -> CGEvent? {
+        DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "command_v_up")
         switch state {
         case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
             // Released before hold threshold — deliver the paste we owe.
@@ -269,15 +299,34 @@ public final class ClipLogEventTap: @unchecked Sendable {
                     "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "event_tap",
+                action: "command_v_up",
+                details: [
+                    "sessionID": "\(sessionID)",
+                    "step": queuedPaste ? "queued_paste" : "passthrough_paste",
+                    "heldMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+                ]
+            )
             if queuedPaste {
                 DispatchQueue.main.async { self.onQueuedPaste?() }
             } else {
                 synthesiseCommandV()
                 DispatchQueue.main.async { self.onPassthrough?() }
             }
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_up",
+                details: ["success": "true", "sessionID": "\(sessionID)", "result": "short_release"]
+            )
             return nil
 
         case .hudActive:
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_up",
+                details: ["success": "true", "result": "hud_active_suppressed"]
+            )
             // HUD handles selection; keyUp is irrelevant.
             return nil
 
@@ -289,6 +338,11 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private func handleCommandRelease() {
         switch state {
         case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
+            DiagnosticsLogbook.shared.actionInput(
+                feature: "event_tap",
+                action: "command_release",
+                details: ["sessionID": "\(sessionID)"]
+            )
             // ⌘ released before the hold threshold — deliver the paste we suppressed.
             timer.cancel()
             state = .idle
@@ -302,12 +356,26 @@ public final class ClipLogEventTap: @unchecked Sendable {
                     "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "event_tap",
+                action: "command_release",
+                details: [
+                    "sessionID": "\(sessionID)",
+                    "step": queuedPaste ? "queued_paste" : "passthrough_paste",
+                    "heldMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))"
+                ]
+            )
             if queuedPaste {
                 DispatchQueue.main.async { self.onQueuedPaste?() }
             } else {
                 synthesiseCommandV()
                 DispatchQueue.main.async { self.onPassthrough?() }
             }
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_release",
+                details: ["success": "true", "sessionID": "\(sessionID)", "result": "short_release"]
+            )
         case .hudActive:
             // Do NOT cancel the HUD here.
             // Releasing command after the hold is normal; keep the notification
@@ -387,7 +455,16 @@ public final class ClipLogEventTap: @unchecked Sendable {
     // re-enter the callback.
 
     private func synthesiseCommandV() {
-        guard let src = CGEventSource(stateID: .hidSystemState) else { return }
+        DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "synthesize_cmd_v")
+        guard let src = CGEventSource(stateID: .hidSystemState) else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "synthesize_cmd_v",
+                details: ["success": "false", "reason": "missing_event_source"]
+            )
+            return
+        }
+        DiagnosticsLogbook.shared.actionProcess(feature: "event_tap", action: "synthesize_cmd_v", details: ["step": "post_key_events"])
         if let down = CGEvent(keyboardEventSource: src, virtualKey: 0x09, keyDown: true) {
             down.flags = .maskCommand
             down.post(tap: .cgSessionEventTap)
@@ -396,6 +473,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
             up.flags = .maskCommand
             up.post(tap: .cgSessionEventTap)
         }
+        DiagnosticsLogbook.shared.actionOutput(feature: "event_tap", action: "synthesize_cmd_v", details: ["success": "true"])
     }
 
     // MARK: - Helpers
@@ -420,12 +498,20 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     @discardableResult
     private func handleAppendGesture(currentTime now: Date, lastTime: inout Date?) -> Bool {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "double_command",
+            details: ["hasPreviousTap": "\(lastTime != nil)"]
+        )
         if let last = lastTime, now.timeIntervalSince(last) <= appendGestureInterval {
             lastTime = nil
+            DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "double_command", details: ["step": "trigger_append"])
             DispatchQueue.main.async { self.onAppendGesture?() }
+            DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "double_command", details: ["success": "true"])
             return true
         } else {
             lastTime = now
+            DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "double_command", details: ["success": "false", "reason": "first_tap"])
             return false
         }
     }
@@ -459,23 +545,31 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
         // ESC → dismiss
         if vk == Self.kVK_Escape {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_escape", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDEscape?(sessionID) }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_escape", details: ["success": "true"])
             return nil
         }
 
         // Arrow keys → move visual selection.
         if !cmd, !opt, !ctrl, vk == Self.kVK_UpArrow {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_up_arrow", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDMoveSelection?(-1) }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_up_arrow", details: ["success": "true"])
             return nil
         }
         if !cmd, !opt, !ctrl, vk == Self.kVK_DownArrow {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_down_arrow", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDMoveSelection?(1) }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_down_arrow", details: ["success": "true"])
             return nil
         }
 
         // Return → paste the selected visible entry.
         if !cmd, !opt, !ctrl, vk == Self.kVK_Return || vk == Self.kVK_KeypadEnter {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_return", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDConfirmSelection?(sessionID) }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_return", details: ["success": "true"])
             return nil
         }
 
@@ -483,19 +577,25 @@ public final class ClipLogEventTap: @unchecked Sendable {
         // suppress exact command-letter chords so they do not quit/close the
         // foreground app behind the non-activating panel.
         if exactCommand, Self.blockedCommandLetterKeys.contains(vk) {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "blocked_command_letter", details: ["sessionID": "\(sessionID)", "keyCode": "\(vk)"])
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "blocked_command_letter", details: ["success": "true"])
             return nil
         }
 
         // Delete/backspace → clear filter
         if vk == Self.kVK_Delete {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_backspace", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDBackspace?() }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_backspace", details: ["success": "true"])
             return nil
         }
 
         // Plain printable character (no modifiers) → type-to-filter
         if !cmd, !opt, !ctrl, let chars = event.getUnicode(), let ch = chars.first,
            ch.isLetter || ch.isNumber || ch.isPunctuation || ch.isSymbol {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_filter_character", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDCharFilter?(ch) }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_filter_character", details: ["success": "true"])
             return nil
         }
 
@@ -509,7 +609,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
                   case .hudActive(let activeSessionID) = self.state,
                   activeSessionID == sessionID
             else { return }
+            DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "hud_did_dismiss", details: ["sessionID": "\(sessionID)"])
             self.state = .idle
+            DiagnosticsLogbook.shared.actionOutput(feature: "event_tap", action: "hud_did_dismiss", details: ["success": "true"])
         }
     }
 

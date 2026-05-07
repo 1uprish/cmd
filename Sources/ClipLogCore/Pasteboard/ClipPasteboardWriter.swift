@@ -21,12 +21,44 @@ public enum ClipPasteboardWriter {
 
     public static func write(_ entry: ClipEntry, to pasteboard: NSPasteboard = .general) {
         let startedAt = Date()
+        let details = [
+            "entryType": entry.contentType.rawValue,
+            "dataBytes": "\(entry.contentData.count)",
+            "sourceApp": entry.sourceBundleID
+        ]
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "pasteboard_write",
+            action: "single_entry",
+            details: details
+        )
         pasteboard.clearContents()
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "pasteboard_write",
+            action: "single_entry",
+            details: details.merging(["step": "build_writers"], uniquingKeysWith: { _, new in new })
+        )
         let writers = pasteboardWriters(for: entry)
         if !writers.isEmpty {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "pasteboard_write",
+                action: "single_entry",
+                details: details.merging([
+                    "step": "write_objects",
+                    "writerCount": "\(writers.count)"
+                ], uniquingKeysWith: { _, new in new })
+            )
             pasteboard.writeObjects(writers)
         }
         let elapsedMs = milliseconds(since: startedAt)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "pasteboard_write",
+            action: "single_entry",
+            details: details.merging([
+                "success": writers.isEmpty ? "false" : "true",
+                "writerCount": "\(writers.count)",
+                "durationMs": "\(elapsedMs)"
+            ], uniquingKeysWith: { _, new in new })
+        )
         if elapsedMs >= 250 {
             DiagnosticsLogbook.shared.record(
                 "slow_clipboard_write",
@@ -42,12 +74,44 @@ public enum ClipPasteboardWriter {
 
     public static func write(_ entries: [ClipEntry], to pasteboard: NSPasteboard = .general) {
         let startedAt = Date()
+        let details = [
+            "entryType": "multiple",
+            "entryCount": "\(entries.count)",
+            "entryTypes": entries.map(\.contentType.rawValue).joined(separator: ",")
+        ]
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "pasteboard_write",
+            action: "multiple_entries",
+            details: details
+        )
         pasteboard.clearContents()
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "pasteboard_write",
+            action: "multiple_entries",
+            details: details.merging(["step": "build_writers"], uniquingKeysWith: { _, new in new })
+        )
         let writers = pasteboardWriters(for: entries)
         if !writers.isEmpty {
+            DiagnosticsLogbook.shared.actionProcess(
+                feature: "pasteboard_write",
+                action: "multiple_entries",
+                details: details.merging([
+                    "step": "write_objects",
+                    "writerCount": "\(writers.count)"
+                ], uniquingKeysWith: { _, new in new })
+            )
             pasteboard.writeObjects(writers)
         }
         let elapsedMs = milliseconds(since: startedAt)
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "pasteboard_write",
+            action: "multiple_entries",
+            details: details.merging([
+                "success": writers.isEmpty ? "false" : "true",
+                "writerCount": "\(writers.count)",
+                "durationMs": "\(elapsedMs)"
+            ], uniquingKeysWith: { _, new in new })
+        )
         if elapsedMs >= 250 {
             DiagnosticsLogbook.shared.record(
                 "slow_clipboard_write",

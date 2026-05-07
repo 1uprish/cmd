@@ -86,6 +86,47 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
         }
     }
 
+    public func actionInput(
+        feature: String,
+        action: String,
+        details: [String: String] = [:]
+    ) {
+        recordAction(stage: "input", feature: feature, action: action, details: details)
+    }
+
+    public func actionProcess(
+        feature: String,
+        action: String,
+        details: [String: String] = [:]
+    ) {
+        recordAction(stage: "process", feature: feature, action: action, details: details)
+    }
+
+    public func actionOutput(
+        feature: String,
+        action: String,
+        details: [String: String] = [:]
+    ) {
+        recordAction(stage: "output", feature: feature, action: action, details: details)
+    }
+
+    private func recordAction(
+        stage: String,
+        feature: String,
+        action: String,
+        details: [String: String]
+    ) {
+        var merged = [
+            "stage": stage,
+            "feature": feature,
+            "action": action
+        ]
+        for (key, value) in details {
+            merged[key] = value
+        }
+        record("feature_action_\(stage)", category: feature, details: merged)
+    }
+
     private func rotateIfNeeded(at url: URL) {
         guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
               let size = attributes[.size] as? NSNumber,

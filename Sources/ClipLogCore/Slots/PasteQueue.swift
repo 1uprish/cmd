@@ -36,11 +36,32 @@ public final class PasteQueue: @unchecked Sendable {
     /// - Returns: `true` if an item was pasted, `false` if the queue was empty.
     @discardableResult
     public func pasteNext() -> Bool {
+        let startedAt = Date()
+        let queuedBefore = count
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "paste_queue",
+            action: "paste_next",
+            details: [
+                "queuedBefore": "\(queuedBefore)",
+                "targetApp": Self.frontmostBundleIdentifier()
+            ]
+        )
         let entry: ClipEntry? = lock.withLock {
             guard !queue.isEmpty else { return nil }
             return queue.removeFirst()
         }
-        guard let entry else { return false }
+        guard let entry else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "paste_queue",
+                action: "paste_next",
+                details: [
+                    "success": "false",
+                    "reason": "empty",
+                    "queuedBefore": "\(queuedBefore)"
+                ]
+            )
+            return false
+        }
 
         DiagnosticsLogbook.shared.record(
             "paste_requested",
@@ -53,7 +74,21 @@ public final class PasteQueue: @unchecked Sendable {
                 "remainingBeforePaste": "\(count)"
             ]
         )
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste_queue",
+            action: "paste_next",
+            details: [
+                "step": "write_pasteboard",
+                "entryType": entry.contentType.rawValue,
+                "entrySourceApp": entry.sourceBundleID
+            ]
+        )
         ClipPasteboardWriter.write(entry)
+        DiagnosticsLogbook.shared.actionProcess(
+            feature: "paste_queue",
+            action: "paste_next",
+            details: ["step": "synthesize_cmd_v"]
+        )
         synthesiseCmdV()
 
         let remaining = count
@@ -61,6 +96,15 @@ public final class PasteQueue: @unchecked Sendable {
             name: .clipLogQueueDidAdvance,
             object: nil,
             userInfo: ["remaining": remaining]
+        )
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "paste_queue",
+            action: "paste_next",
+            details: [
+                "success": "true",
+                "remaining": "\(remaining)",
+                "durationMs": "\(Self.milliseconds(since: startedAt))"
+            ]
         )
         return true
     }
@@ -98,6 +142,10 @@ public final class PasteQueue: @unchecked Sendable {
 
     private static func frontmostBundleIdentifier() -> String {
         NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
+    }
+
+    private static func milliseconds(since start: Date) -> Int {
+        Int(Date().timeIntervalSince(start) * 1000)
     }
 }
 
