@@ -113,6 +113,9 @@ public final class PasteboardWatcher: @unchecked Sendable {
     private var lastClipString: String = ""
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.cmd.pasteboard", qos: .utility)
+    private let imageCaptureQueue = DispatchQueue(label: "com.cmd.pasteboard.imageCapture", qos: .utility)
+    private var imageCaptureInFlight = false
+    private var appendImageCaptureInFlight = false
     private static let pollInterval: DispatchTimeInterval = .milliseconds(350)
     private static let slowPollThreshold: TimeInterval = 0.25
     private static let maxInlineImageBytes = 18 * 1024 * 1024
@@ -251,8 +254,15 @@ public final class PasteboardWatcher: @unchecked Sendable {
             return
         }
 
+        let classifiedType = classifyType(pb)
+        if classifiedType == .image {
+            entryType = "image_deferred"
+            scheduleImageCapture(sourceBundle: bundle, changeCount: current)
+            return
+        }
+
         let buildStartedAt = Date()
-        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil) else { return }
+        guard let entry = buildEntry(from: pb, sourceBundle: bundle, windowTitle: nil, forcedType: classifiedType) else { return }
         buildEntryMs = Self.milliseconds(since: buildStartedAt)
         entryType = entry.contentType.rawValue
 
@@ -261,11 +271,98 @@ public final class PasteboardWatcher: @unchecked Sendable {
             lastClipString = str
         }
 
+        ingestMs = publishCapturedEntry(entry)
+    }
+
+    private func scheduleImageCapture(sourceBundle: String, changeCount: Int) {
+        guard !imageCaptureInFlight else {
+            DiagnosticsLogbook.shared.record(
+                "image_capture_dropped",
+                category: "pasteboard",
+                details: ["reason": "capture_in_flight"]
+            )
+            return
+        }
+
+        imageCaptureInFlight = true
+        DiagnosticsLogbook.shared.record(
+            "image_capture_deferred",
+            category: "pasteboard",
+            details: ["changeCount": "\(changeCount)"]
+        )
+
+        imageCaptureQueue.async { [weak self] in
+            guard let self else { return }
+            let startedAt = Date()
+            let pb = NSPasteboard.general
+            guard pb.changeCount == changeCount else {
+                self.finishDeferredImageCapture(
+                    changeCount: changeCount,
+                    buildMs: Self.milliseconds(since: startedAt),
+                    ingestMs: 0,
+                    result: "stale"
+                )
+                return
+            }
+
+            guard let entry = self.buildEntry(
+                from: pb,
+                sourceBundle: sourceBundle,
+                windowTitle: nil,
+                forcedType: .image
+            ) else {
+                self.finishDeferredImageCapture(
+                    changeCount: changeCount,
+                    buildMs: Self.milliseconds(since: startedAt),
+                    ingestMs: 0,
+                    result: "empty"
+                )
+                return
+            }
+
+            let buildMs = Self.milliseconds(since: startedAt)
+            let ingestMs = self.publishCapturedEntry(entry)
+            self.finishDeferredImageCapture(
+                changeCount: changeCount,
+                buildMs: buildMs,
+                ingestMs: ingestMs,
+                result: "captured"
+            )
+        }
+    }
+
+    private func finishDeferredImageCapture(
+        changeCount: Int,
+        buildMs: Int,
+        ingestMs: Int,
+        result: String
+    ) {
+        DiagnosticsLogbook.shared.record(
+            "deferred_image_capture_completed",
+            category: "pasteboard",
+            details: [
+                "changeCount": "\(changeCount)",
+                "buildMs": "\(buildMs)",
+                "ingestMs": "\(ingestMs)",
+                "result": result
+            ]
+        )
+
+        queue.async {
+            self.imageCaptureInFlight = false
+        }
+    }
+
+    private func publishCapturedEntry(_ entry: ClipEntry) -> Int {
         let ingestStartedAt = Date()
         onNewEntry?(entry)
-        ingestMs = Self.milliseconds(since: ingestStartedAt)
+        let ingestMs = Self.milliseconds(since: ingestStartedAt)
 
-        // Embed text-based entries for semantic search (fire-and-forget).
+        schedulePostProcessing(for: entry)
+        return ingestMs
+    }
+
+    private func schedulePostProcessing(for entry: ClipEntry) {
         if [.text, .url, .code, .rich].contains(entry.contentType), !entry.isSensitive {
             let capturedEntry = entry
             Task.detached(priority: .utility) { [weak self] in
@@ -277,7 +374,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
         if imageOCREnabled, entry.contentType == .image, let mediaPath = entry.mediaPath {
             let mediaDir = AppStoragePaths.mediaDirectory
             let imageURL = mediaDir.appendingPathComponent(mediaPath)
-            let entryID  = entry.id
+            let entryID = entry.id
             Task.detached(priority: .utility) { [weak self] in
                 guard let store = self?.store else { return }
                 await OCRService.shared.processAndStore(entryID: entryID, imageURL: imageURL, store: store)
@@ -299,8 +396,9 @@ public final class PasteboardWatcher: @unchecked Sendable {
     }
 
     private func mergeCurrentPasteboardIntoAppendSession(_ pb: NSPasteboard) {
-        let imageClip = imageData(from: pb).flatMap { data in
-            data.isEmpty ? nil : AppendClip.image(data)
+        if hasImageType(pb) {
+            scheduleAppendImageCapture(changeCount: pb.changeCount)
+            return
         }
 
         let textClip: AppendClip?
@@ -315,7 +413,82 @@ public final class PasteboardWatcher: @unchecked Sendable {
             textClip = nil
         }
 
-        mergeIntoAppendSession([textClip, imageClip].compactMap { $0 }, pasteboard: pb)
+        mergeIntoAppendSession([textClip].compactMap { $0 }, pasteboard: pb)
+    }
+
+    private func scheduleAppendImageCapture(changeCount: Int) {
+        guard !appendImageCaptureInFlight else {
+            DiagnosticsLogbook.shared.record(
+                "append_image_capture_dropped",
+                category: "append",
+                details: ["reason": "capture_in_flight"]
+            )
+            return
+        }
+
+        appendImageCaptureInFlight = true
+        DiagnosticsLogbook.shared.record(
+            "append_image_capture_deferred",
+            category: "append",
+            details: ["changeCount": "\(changeCount)"]
+        )
+
+        imageCaptureQueue.async { [weak self] in
+            guard let self else { return }
+            let startedAt = Date()
+            let pb = NSPasteboard.general
+            guard pb.changeCount == changeCount else {
+                self.finishAppendImageCapture(
+                    clips: [],
+                    changeCount: changeCount,
+                    captureMs: Self.milliseconds(since: startedAt),
+                    result: "stale"
+                )
+                return
+            }
+
+            var clips: [AppendClip] = []
+            if let newString = pb.string(forType: .string),
+               !newString.isEmpty,
+               !Self.attachmentLabelFallbacks.contains(newString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                clips.append(.text(newString))
+            }
+
+            if let data = self.imageData(from: pb), !data.isEmpty {
+                clips.append(.image(data))
+            }
+
+            self.finishAppendImageCapture(
+                clips: clips,
+                changeCount: changeCount,
+                captureMs: Self.milliseconds(since: startedAt),
+                result: clips.isEmpty ? "empty" : "captured"
+            )
+        }
+    }
+
+    private func finishAppendImageCapture(
+        clips: [AppendClip],
+        changeCount: Int,
+        captureMs: Int,
+        result: String
+    ) {
+        queue.async {
+            self.appendImageCaptureInFlight = false
+            DiagnosticsLogbook.shared.record(
+                "append_image_capture_completed",
+                category: "append",
+                details: [
+                    "changeCount": "\(changeCount)",
+                    "captureMs": "\(captureMs)",
+                    "result": result,
+                    "clipCount": "\(clips.count)"
+                ]
+            )
+
+            guard !clips.isEmpty else { return }
+            self.mergeIntoAppendSession(clips, pasteboard: NSPasteboard.general)
+        }
     }
 
     private func mergeIntoAppendSession(_ newClip: AppendClip, pasteboard pb: NSPasteboard) {
@@ -472,25 +645,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             windowTitle: "Append"
         ) else { return }
 
-        onNewEntry?(entry)
-
-        if [.text, .url, .code, .rich].contains(entry.contentType), !entry.isSensitive {
-            let capturedEntry = entry
-            Task.detached(priority: .utility) { [weak self] in
-                guard let store = self?.store else { return }
-                await EmbeddingService.shared.embed(entry: capturedEntry, store: store)
-            }
-        }
-
-        if imageOCREnabled, entry.contentType == .image, let mediaPath = entry.mediaPath {
-            let mediaDir = AppStoragePaths.mediaDirectory
-            let imageURL = mediaDir.appendingPathComponent(mediaPath)
-            let entryID = entry.id
-            Task.detached(priority: .utility) { [weak self] in
-                guard let store = self?.store else { return }
-                await OCRService.shared.processAndStore(entryID: entryID, imageURL: imageURL, store: store)
-            }
-        }
+        _ = publishCapturedEntry(entry)
     }
 
     private func publishAppendSnapshot(isActive: Bool = true) {
@@ -518,8 +673,13 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     // MARK: - Entry construction
 
-    private func buildEntry(from pb: NSPasteboard, sourceBundle: String, windowTitle: String?) -> ClipEntry? {
-        let type = classifyType(pb)
+    private func buildEntry(
+        from pb: NSPasteboard,
+        sourceBundle: String,
+        windowTitle: String?,
+        forcedType: ClipContentType? = nil
+    ) -> ClipEntry? {
+        let type = forcedType ?? classifyType(pb)
         switch type {
         case .text, .url, .code:
             guard let str = pb.string(forType: .string), !str.isEmpty else { return nil }
