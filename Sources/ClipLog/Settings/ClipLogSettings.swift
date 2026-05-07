@@ -110,7 +110,7 @@ public final class ClipLogSettings: ObservableObject {
         let defaults = UserDefaults.standard
 
         defaults.register(defaults: [
-            Keys.holdThresholdMs:     200,
+            Keys.holdThresholdMs:     160,
             Keys.retentionDays:       30,
             Keys.sensitiveRetentionMinutes: 60,
             Keys.userExcludedBundles: [String](),

@@ -74,8 +74,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///     from a previous build's code-signature; reset + re-prompt.
     private func checkAndStartEventTap() {
         if AXIsProcessTrusted() {
+            DiagnosticsLogbook.shared.record("accessibility_trusted", category: "event_tap")
             attemptStart()
         } else {
+            DiagnosticsLogbook.shared.record("accessibility_not_trusted", category: "event_tap")
             showAccessibilityPrompt()
             pollForAccessibility()
         }
@@ -104,6 +106,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func pollForAccessibility() {
         guard !isPollingForAccessibility else { return }
         isPollingForAccessibility = true
+        DiagnosticsLogbook.shared.record("accessibility_poll_started", category: "event_tap")
         pollForAccessibilityTick()
     }
 
@@ -111,6 +114,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
             guard let self else { return }
             if AXIsProcessTrusted() {
+                DiagnosticsLogbook.shared.record("accessibility_granted", category: "event_tap")
                 self.isPollingForAccessibility = false
                 self.attemptStart()
             } else {

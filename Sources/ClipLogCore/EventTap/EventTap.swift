@@ -46,8 +46,8 @@ public final class ClipLogEventTap: @unchecked Sendable {
     /// Prevents ⌘V from being permanently swallowed by a stale .hudActive state.
     public var isHUDActuallyVisible: (() -> Bool)?
 
-    /// How long ⌘V must be held to trigger the HUD. Default 200ms.
-    public var holdThreshold: TimeInterval = 0.200
+    /// How long ⌘V must be held to trigger the HUD. Default 160ms.
+    public var holdThreshold: TimeInterval = 0.160
 
     public func updateHoldThreshold(_ threshold: TimeInterval) {
         let clamped = min(max(threshold, 0.100), 0.500)
@@ -78,7 +78,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     // State machine
     private enum State {
         case idle
-        case pendingHold(sessionID: UInt64, timer: DispatchSourceTimer, queuedPaste: Bool)
+        case pendingHold(sessionID: UInt64, timer: DispatchSourceTimer, queuedPaste: Bool, startedAt: Date)
         case hudActive(sessionID: UInt64)
     }
     private var state: State = .idle
@@ -149,7 +149,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     public func stop() {
         DiagnosticsLogbook.shared.record("event_tap_stopped", category: "event_tap")
         tapQueue.sync {
-            if case .pendingHold(_, let timer, _) = state {
+            if case .pendingHold(_, let timer, _, _) = state {
                 timer.cancel()
             }
             state = .idle
@@ -227,7 +227,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
             let sessionID = makeSessionID()
             let timer = makeHoldTimer(sessionID: sessionID)
             let queuedPaste = !PasteQueue.shared.isEmpty
-            state = .pendingHold(sessionID: sessionID, timer: timer, queuedPaste: queuedPaste)
+            state = .pendingHold(sessionID: sessionID, timer: timer, queuedPaste: queuedPaste, startedAt: Date())
             DiagnosticsLogbook.shared.record(
                 "command_v_pending",
                 category: "event_tap",
@@ -255,7 +255,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     private func handleCommandVUp(event: CGEvent) -> CGEvent? {
         switch state {
-        case .pendingHold(let sessionID, let timer, let queuedPaste):
+        case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
             // Released before hold threshold — deliver the paste we owe.
             timer.cancel()
             state = .idle
@@ -264,7 +264,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
                 category: "event_tap",
                 details: [
                     "sessionID": "\(sessionID)",
-                    "queuedPaste": "\(queuedPaste)"
+                    "queuedPaste": "\(queuedPaste)",
+                    "heldMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+                    "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
             if queuedPaste {
@@ -286,7 +288,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     private func handleCommandRelease() {
         switch state {
-        case .pendingHold(let sessionID, let timer, let queuedPaste):
+        case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
             // ⌘ released before the hold threshold — deliver the paste we suppressed.
             timer.cancel()
             state = .idle
@@ -295,7 +297,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
                 category: "event_tap",
                 details: [
                     "sessionID": "\(sessionID)",
-                    "queuedPaste": "\(queuedPaste)"
+                    "queuedPaste": "\(queuedPaste)",
+                    "heldMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+                    "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
             if queuedPaste {
@@ -324,7 +328,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
         // Events leaked while tap was disabled — the app already received
         // them, so we must not synthesise again.
-        if case .pendingHold(_, let timer, _) = state { timer.cancel() }
+        if case .pendingHold(_, let timer, _, _) = state { timer.cancel() }
         state = .idle
     }
 
@@ -335,7 +339,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
         timer.schedule(deadline: .now() + holdThreshold, leeway: .milliseconds(10))
         timer.setEventHandler { [weak self] in
             guard let self else { return }
-            guard case .pendingHold(let activeSessionID, _, let queuedPaste) = self.state,
+            guard case .pendingHold(let activeSessionID, _, let queuedPaste, let startedAt) = self.state,
                   activeSessionID == sessionID else { return }
             self.state = .hudActive(sessionID: sessionID)
             DiagnosticsLogbook.shared.record(
@@ -343,7 +347,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
                 category: "event_tap",
                 details: [
                     "sessionID": "\(sessionID)",
-                    "queuedPaste": "\(queuedPaste)"
+                    "queuedPaste": "\(queuedPaste)",
+                    "heldMs": "\(Int(Date().timeIntervalSince(startedAt) * 1000))",
+                    "holdThresholdMs": "\(Int(holdThreshold * 1000))"
                 ]
             )
             DispatchQueue.main.async { self.onHUDTrigger?(sessionID) }
