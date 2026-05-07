@@ -331,7 +331,7 @@ public final class HUDPanel {
             selectedOriginalIndices: selectionOriginalIndicesForDisplay(),
             anchorDisplayIndex: multiSelectionAnchorDisplayIndex
         )
-        dismiss(selecting: nil, sessionID: nil, animated: false)
+        dismissWithoutActionForDrag(animated: false)
     }
 
     public func restoreAfterCancelledDrag() {
@@ -388,6 +388,34 @@ public final class HUDPanel {
 
         if animated {
             animateOut(to: lastAnimationOrigin, selectedOriginalIndex: index)
+        } else {
+            panel.orderOut(nil)
+            resetRootLayer()
+            resetRows()
+        }
+    }
+
+    private func dismissWithoutActionForDrag(animated: Bool) {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async {
+                self.dismissWithoutActionForDrag(animated: animated)
+            }
+            return
+        }
+
+        guard let dismissedSessionID = beginDismiss(sessionID: nil) else { return }
+        let selectedCount = selectionOriginalIndicesForDisplay().count
+
+        removeDismissGuards()
+        onDismiss?(dismissedSessionID)
+        DiagnosticsLogbook.shared.record(
+            "hud_dismissed_for_drag",
+            category: "drag",
+            details: ["selectedCount": "\(selectedCount)"]
+        )
+
+        if animated {
+            animateOut(to: lastAnimationOrigin, selectedOriginalIndex: nil)
         } else {
             panel.orderOut(nil)
             resetRootLayer()
@@ -1508,6 +1536,8 @@ private final class HUDRowView: NSView {
     private var cachedStackDragImage: NSImage?
     private var cachedStackDragWriters: [NSPasteboardWriting] = []
     private var cachedStackSignature: String?
+    private var activeDragEntryCount = 0
+    private var activeDragWriterCount = 0
 
     var originalIndex: Int? {
         index
@@ -1716,7 +1746,17 @@ private final class HUDRowView: NSView {
         guard !writers.isEmpty else { return }
         guard let image else { return }
         dragStarted = true
+        activeDragEntryCount = dragEntries.count
+        activeDragWriterCount = writers.count
         HUDHaptics.dragStarted(count: dragEntries.count)
+        DiagnosticsLogbook.shared.record(
+            "drag_session_start",
+            category: "drag",
+            details: [
+                "entryCount": "\(dragEntries.count)",
+                "writerCount": "\(writers.count)"
+            ]
+        )
 
         let ghostSize = image.size
         let dragFrame = NSRect(
@@ -2132,6 +2172,17 @@ extension HUDRowView: NSDraggingSource {
         NSCursor.arrow.set()
         animateDragLift(active: false)
         HUDHaptics.dragEnded(success: !operation.isEmpty)
+        DiagnosticsLogbook.shared.record(
+            "drag_session_end",
+            category: "drag",
+            details: [
+                "entryCount": "\(activeDragEntryCount)",
+                "writerCount": "\(activeDragWriterCount)",
+                "operation": operation.isEmpty ? "cancelled" : "\(operation.rawValue)"
+            ]
+        )
+        activeDragEntryCount = 0
+        activeDragWriterCount = 0
         onDragEnd?(operation)
     }
 
