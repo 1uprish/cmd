@@ -604,9 +604,16 @@ public final class HUDPanel {
 
     private func updateSelection() {
         let selectedOriginalIndices = selectionOriginalIndicesForDisplay()
+        let selectedEntries = selectedOriginalIndices.count > 1
+            ? displayedIndices()
+                .filter { selectedOriginalIndices.contains($0) }
+                .compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
+            : []
         for row in rowViews {
             let originalIndex = row.originalIndex
-            row.setSelected(originalIndex.map { selectedOriginalIndices.contains($0) } ?? false)
+            let isSelected = originalIndex.map { selectedOriginalIndices.contains($0) } ?? false
+            row.setSelected(isSelected)
+            row.updateStackDragCache(entries: isSelected ? selectedEntries : [])
         }
         updateSelectionBadge(count: selectedOriginalIndices.count)
     }
@@ -687,9 +694,13 @@ public final class HUDPanel {
 
     private func entriesForAction(fallbackOriginalIndex: Int?) -> [ClipEntry] {
         let visibleIndices = displayedIndices()
-        let selectedOriginalIndices = !multiSelectedOriginalIndices.isEmpty
-            ? multiSelectedOriginalIndices
-            : Set(fallbackOriginalIndex.map { [$0] } ?? [])
+        let selectedOriginalIndices: Set<Int>
+        if !multiSelectedOriginalIndices.isEmpty,
+           fallbackOriginalIndex.map({ multiSelectedOriginalIndices.contains($0) }) ?? true {
+            selectedOriginalIndices = multiSelectedOriginalIndices
+        } else {
+            selectedOriginalIndices = Set(fallbackOriginalIndex.map { [$0] } ?? [])
+        }
 
         return visibleIndices
             .filter { selectedOriginalIndices.contains($0) }
@@ -1488,6 +1499,9 @@ private final class HUDRowView: NSView {
     private var sizeScale: CGFloat = 1.0
     private var cachedDragImage: NSImage?
     private var cachedDragWriters: [NSPasteboardWriting] = []
+    private var cachedStackDragImage: NSImage?
+    private var cachedStackDragWriters: [NSPasteboardWriting] = []
+    private var cachedStackSignature: String?
 
     var originalIndex: Int? {
         index
@@ -1680,13 +1694,20 @@ private final class HUDRowView: NSView {
         guard dx * dx + dy * dy > 16 else { return }
 
         let dragEntries = dragEntriesProvider?(index) ?? entry.map { [$0] } ?? []
-        let writers = dragEntries.count > 1
-            ? ClipPasteboardWriter.dragPasteboardWriters(for: dragEntries)
-            : cachedDragWriters
+        let writers: [NSPasteboardWriting]
+        let image: NSImage?
+        if dragEntries.count > 1 {
+            let signature = stackSignature(for: dragEntries)
+            if signature != cachedStackSignature {
+                updateStackDragCache(entries: dragEntries)
+            }
+            writers = cachedStackDragWriters
+            image = cachedStackDragImage
+        } else {
+            writers = cachedDragWriters
+            image = cachedDragImage
+        }
         guard !writers.isEmpty else { return }
-        let image = dragEntries.count > 1
-            ? lightweightStackDragImage(for: dragEntries)
-            : cachedDragImage
         guard let image else { return }
         dragStarted = true
         NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
@@ -1840,11 +1861,28 @@ private final class HUDRowView: NSView {
     private func buildDragCache(for entry: ClipEntry) {
         cachedDragWriters = pasteboardWriters(for: entry)
         cachedDragImage = lightweightDragImage(for: entry)
+        updateStackDragCache(entries: [])
     }
 
     private func clearDragCache() {
         cachedDragImage = nil
         cachedDragWriters = []
+        updateStackDragCache(entries: [])
+    }
+
+    func updateStackDragCache(entries: [ClipEntry]) {
+        guard entries.count > 1 else {
+            cachedStackDragImage = nil
+            cachedStackDragWriters = []
+            cachedStackSignature = nil
+            return
+        }
+
+        let signature = stackSignature(for: entries)
+        guard signature != cachedStackSignature else { return }
+        cachedStackSignature = signature
+        cachedStackDragWriters = ClipPasteboardWriter.dragPasteboardWriters(for: entries)
+        cachedStackDragImage = lightweightStackDragImage(for: entries)
     }
 
     private static let ghostSize = NSSize(width: 360, height: 68)
@@ -1983,6 +2021,10 @@ private final class HUDRowView: NSView {
             if chips.count == 3 { break }
         }
         return chips
+    }
+
+    private func stackSignature(for entries: [ClipEntry]) -> String {
+        entries.map { "\($0.id.uuidString):\($0.contentHash)" }.joined(separator: "|")
     }
 
     private func drawTypeChips(_ chips: [String], startX: CGFloat, y: CGFloat, maxWidth: CGFloat) {

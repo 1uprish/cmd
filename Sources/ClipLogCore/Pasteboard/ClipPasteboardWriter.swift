@@ -82,10 +82,7 @@ public enum ClipPasteboardWriter {
 
         case .file:
             let raw = String(data: entry.contentData, encoding: .utf8) ?? ""
-            let urls = raw
-                .components(separatedBy: "\n")
-                .filter { !$0.isEmpty }
-                .compactMap { URL(string: $0) as NSURL? }
+            let urls = fileURLs(for: entry)
             return urls.isEmpty ? [plainTextItem(raw)] : urls
 
         case .color:
@@ -115,6 +112,10 @@ public enum ClipPasteboardWriter {
                 return [plainTextItem(String(data: entry.contentData, encoding: .utf8) ?? entry.previewText)]
             }
             return [item]
+        case .file:
+            let raw = String(data: entry.contentData, encoding: .utf8) ?? ""
+            let urls = DragPasteboardPayloadCache.shared.fileURLs(for: entry)
+            return urls.isEmpty ? [plainTextItem(raw)] : urls
         default:
             return pasteboardWriters(for: entry)
         }
@@ -130,13 +131,26 @@ public enum ClipPasteboardWriter {
 
     public static func originalImageData(for entry: ClipEntry) -> Data? {
         guard entry.contentType == .image else { return nil }
+        return storedImageDataCandidates(for: entry).first { NSImage(data: $0) != nil }
+    }
+
+    static func storedImageData(for entry: ClipEntry) -> Data? {
+        storedImageDataCandidates(for: entry).first
+    }
+
+    static func storedImageDataCandidates(for entry: ClipEntry) -> [Data] {
+        guard entry.contentType == .image else { return [] }
+        var candidates: [Data] = []
         if let mediaPath = entry.mediaPath {
             let url = AppStoragePaths.mediaDirectory.appendingPathComponent(mediaPath)
-            if let data = try? Data(contentsOf: url), NSImage(data: data) != nil {
-                return data
+            if let data = try? Data(contentsOf: url), !data.isEmpty {
+                candidates.append(data)
             }
         }
-        return NSImage(data: entry.contentData) == nil ? nil : entry.contentData
+        if !entry.contentData.isEmpty, candidates.last != entry.contentData {
+            candidates.append(entry.contentData)
+        }
+        return candidates
     }
 
     public static func encodeRichPayload(_ payload: RichPasteboardPayload) -> Data? {
@@ -241,7 +255,8 @@ public enum ClipPasteboardWriter {
 
     private static func lazyImageDragItem(for entry: ClipEntry) -> NSPasteboardItem? {
         guard entry.contentType == .image else { return nil }
-        let provider = LazyImageDragProvider(entry: entry)
+        let payload = DragPasteboardPayloadCache.shared.imagePayload(for: entry)
+        let provider = LazyImageDragProvider(entry: entry, payload: payload)
         return LazyPasteboardItem(provider: provider, types: [
             .png,
             NSPasteboard.PasteboardType("public.png"),
@@ -288,6 +303,14 @@ public enum ClipPasteboardWriter {
         }
 
         return item.types.isEmpty ? nil : item
+    }
+
+    private static func fileURLs(for entry: ClipEntry) -> [NSURL] {
+        let raw = String(data: entry.contentData, encoding: .utf8) ?? ""
+        return raw
+            .components(separatedBy: "\n")
+            .filter { !$0.isEmpty }
+            .compactMap { URL(string: $0) as NSURL? }
     }
 
     private static func pngData(from data: Data, image: NSImage) -> Data? {
@@ -345,13 +368,11 @@ private final class LazyPasteboardItem: NSPasteboardItem {
 
 private final class LazyImageDragProvider: NSObject, NSPasteboardItemDataProvider {
     private let entry: ClipEntry
-    private var cachedOriginalData: Data?
-    private var cachedPNGData: Data?
-    private var cachedTIFFData: Data?
-    private var cachedFileURL: URL?
+    private let payload: ImageDragPayload
 
-    init(entry: ClipEntry) {
+    init(entry: ClipEntry, payload: ImageDragPayload) {
         self.entry = entry
+        self.payload = payload
     }
 
     func pasteboard(
@@ -376,72 +397,20 @@ private final class LazyImageDragProvider: NSObject, NSPasteboardItemDataProvide
         }
 
         if type == .png || type.rawValue == "public.png" {
-            guard let data = pngData() else { return }
+            guard let data = payload.pngData() else { return }
             item.setData(data, forType: type)
             return
         }
 
         if type == .tiff {
-            guard let data = tiffData() else { return }
+            guard let data = payload.tiffData() else { return }
             item.setData(data, forType: type)
             return
         }
 
         if type == .fileURL || type.rawValue == "public.file-url" {
-            guard let url = temporaryFileURL() else { return }
+            guard let url = payload.temporaryFileURL() else { return }
             item.setString(url.absoluteString, forType: type)
-        }
-    }
-
-    private func originalData() -> Data? {
-        if let cachedOriginalData { return cachedOriginalData }
-        let data = ClipPasteboardWriter.originalImageData(for: entry)
-        cachedOriginalData = data
-        return data
-    }
-
-    private func pngData() -> Data? {
-        if let cachedPNGData { return cachedPNGData }
-        guard let data = originalData() else { return nil }
-        if data.starts(with: [0x89, 0x50, 0x4E, 0x47]) {
-            cachedPNGData = data
-            return data
-        }
-        if let bitmap = NSBitmapImageRep(data: data),
-           let png = bitmap.representation(using: .png, properties: [:]) {
-            cachedPNGData = png
-            return png
-        }
-        guard let image = NSImage(data: data),
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
-        else { return nil }
-        cachedPNGData = png
-        return png
-    }
-
-    private func tiffData() -> Data? {
-        if let cachedTIFFData { return cachedTIFFData }
-        guard let data = originalData(), let image = NSImage(data: data) else { return nil }
-        let tiff = image.tiffRepresentation
-        cachedTIFFData = tiff
-        return tiff
-    }
-
-    private func temporaryFileURL() -> URL? {
-        if let cachedFileURL { return cachedFileURL }
-        guard let data = pngData() else { return nil }
-        let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("cmdDragImages", isDirectory: true)
-        let fileURL = directory.appendingPathComponent("\(entry.id.uuidString).png")
-        do {
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            try data.write(to: fileURL, options: .atomic)
-            cachedFileURL = fileURL
-            return fileURL
-        } catch {
-            return nil
         }
     }
 }
