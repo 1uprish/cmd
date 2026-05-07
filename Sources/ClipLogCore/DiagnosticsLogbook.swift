@@ -18,6 +18,23 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
 
     private let queue = DispatchQueue(label: "com.cmd.diagnostics", qos: .utility)
     private let encoder = JSONEncoder()
+    private var lastRemoteReportAt: [String: Date] = [:]
+    private let remoteReportCooldown: TimeInterval = 60
+    private let anomalyEvents: Set<String> = [
+        "startup_failed",
+        "database_open_failed",
+        "database_migration_failed",
+        "event_tap_start_failed",
+        "event_tap_disabled_reenable",
+        "main_thread_stall",
+        "slow_pasteboard_poll",
+        "slow_image_capture",
+        "slow_slot_ingest",
+        "slow_append_pasteboard_write",
+        "slow_clipboard_write",
+        "slow_drag_payload_materialize",
+        "slow_event_tap_callback"
+    ]
     private let timestampFormatter: ISO8601DateFormatter = {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
@@ -59,6 +76,7 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
                 } else {
                     try data.write(to: url, options: .atomic)
                 }
+                self.reportAnomalyIfNeeded(entry: entry)
             } catch {
                 // Diagnostics must never affect clipboard behavior.
             }
@@ -75,6 +93,106 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
             .appendingPathComponent("cmd.log.1", isDirectory: false)
         try? FileManager.default.removeItem(at: rotated)
         try? FileManager.default.moveItem(at: url, to: rotated)
+    }
+
+    private func reportAnomalyIfNeeded(entry: Entry) {
+        guard anomalyEvents.contains(entry.event) else { return }
+
+        let defaults = UserDefaults.standard
+        guard defaults.bool(forKey: "remoteDiagnosticsEnabled"),
+              let endpointValue = defaults.string(forKey: "remoteDiagnosticsEndpoint")?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !endpointValue.isEmpty,
+              let endpointURL = URL(string: endpointValue),
+              ["https", "http"].contains(endpointURL.scheme?.lowercased())
+        else { return }
+
+        let now = Date()
+        let throttleKey = "\(entry.category):\(entry.event)"
+        if let previous = lastRemoteReportAt[throttleKey],
+           now.timeIntervalSince(previous) < remoteReportCooldown {
+            return
+        }
+        lastRemoteReportAt[throttleKey] = now
+
+        var request = URLRequest(url: endpointURL)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 3
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if let token = defaults.string(forKey: "remoteDiagnosticsToken"),
+           !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+
+        let envelope = RemoteDiagnosticsEnvelope(
+            schemaVersion: 1,
+            installationID: installationID(),
+            appVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "unknown",
+            build: Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "unknown",
+            bundleID: Bundle.main.bundleIdentifier ?? "unknown",
+            osVersion: ProcessInfo.processInfo.operatingSystemVersionString,
+            event: RemoteDiagnosticsEvent(
+                timestamp: entry.timestamp,
+                category: entry.category,
+                name: entry.event,
+                details: redactedDetails(entry.details)
+            )
+        )
+
+        guard let body = try? encoder.encode(envelope) else { return }
+        request.httpBody = body
+
+        URLSession.shared.dataTask(with: request).resume()
+    }
+
+    private func redactedDetails(_ details: [String: String]) -> [String: String] {
+        let sensitiveFragments = [
+            "content",
+            "clipboard",
+            "password",
+            "token",
+            "secret",
+            "key",
+            "text",
+            "html"
+        ]
+
+        return details.reduce(into: [:]) { result, pair in
+            let loweredKey = pair.key.lowercased()
+            if sensitiveFragments.contains(where: { loweredKey.contains($0) }) {
+                result[pair.key] = "[redacted]"
+            } else {
+                result[pair.key] = pair.value.count > 256 ? String(pair.value.prefix(256)) : pair.value
+            }
+        }
+    }
+
+    private func installationID() -> String {
+        let key = "remoteDiagnosticsInstallationID"
+        let defaults = UserDefaults.standard
+        if let existing = defaults.string(forKey: key), !existing.isEmpty {
+            return existing
+        }
+
+        let created = UUID().uuidString
+        defaults.set(created, forKey: key)
+        return created
+    }
+
+    private struct RemoteDiagnosticsEnvelope: Codable {
+        let schemaVersion: Int
+        let installationID: String
+        let appVersion: String
+        let build: String
+        let bundleID: String
+        let osVersion: String
+        let event: RemoteDiagnosticsEvent
+    }
+
+    private struct RemoteDiagnosticsEvent: Codable {
+        let timestamp: String
+        let category: String
+        let name: String
+        let details: [String: String]
     }
 }
 

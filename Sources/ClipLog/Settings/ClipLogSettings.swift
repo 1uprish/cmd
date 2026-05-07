@@ -17,6 +17,9 @@ public final class ClipLogSettings: ObservableObject {
         static let hudSizeScale        = "hudSizeScale"
         static let hudAnimationStyle   = "hudAnimationStyle"
         static let onboardingCompleted = "onboardingCompleted"
+        static let remoteDiagnosticsEnabled = "remoteDiagnosticsEnabled"
+        static let remoteDiagnosticsEndpoint = "remoteDiagnosticsEndpoint"
+        static let remoteDiagnosticsToken = "remoteDiagnosticsToken"
     }
 
     @Published public var holdThresholdMs: Int {
@@ -85,6 +88,24 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
+    @Published public var remoteDiagnosticsEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(remoteDiagnosticsEnabled, forKey: Keys.remoteDiagnosticsEnabled)
+        }
+    }
+
+    @Published public var remoteDiagnosticsEndpoint: String {
+        didSet {
+            UserDefaults.standard.set(remoteDiagnosticsEndpoint, forKey: Keys.remoteDiagnosticsEndpoint)
+        }
+    }
+
+    @Published public var remoteDiagnosticsToken: String {
+        didSet {
+            UserDefaults.standard.set(remoteDiagnosticsToken, forKey: Keys.remoteDiagnosticsToken)
+        }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
 
@@ -98,6 +119,9 @@ public final class ClipLogSettings: ObservableObject {
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
             Keys.onboardingCompleted: false,
+            Keys.remoteDiagnosticsEnabled: false,
+            Keys.remoteDiagnosticsEndpoint: "",
+            Keys.remoteDiagnosticsToken: "",
         ])
 
         holdThresholdMs     = defaults.integer(forKey: Keys.holdThresholdMs)
@@ -109,6 +133,9 @@ public final class ClipLogSettings: ObservableObject {
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
         hudAnimationStyle   = defaults.string(forKey: Keys.hudAnimationStyle) ?? "magnetic"
         onboardingCompleted = defaults.bool(forKey: Keys.onboardingCompleted)
+        remoteDiagnosticsEnabled = defaults.bool(forKey: Keys.remoteDiagnosticsEnabled)
+        remoteDiagnosticsEndpoint = defaults.string(forKey: Keys.remoteDiagnosticsEndpoint) ?? ""
+        remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
     }
 }
 

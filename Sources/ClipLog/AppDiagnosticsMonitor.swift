@@ -6,6 +6,8 @@ final class AppDiagnosticsMonitor {
 
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.cmd.diagnostics.monitor", qos: .utility)
+    private var lastHeartbeat = Date.distantPast
+    private let heartbeatInterval: TimeInterval = 300
 
     private init() {}
 
@@ -26,6 +28,18 @@ final class AppDiagnosticsMonitor {
                         details: ["latencyMs": "\(Int(latency * 1000))"]
                     )
                 }
+            }
+
+            let now = Date()
+            if now.timeIntervalSince(self.lastHeartbeat) >= self.heartbeatInterval {
+                self.lastHeartbeat = now
+                DiagnosticsLogbook.shared.record(
+                    "health_heartbeat",
+                    category: "diagnostics",
+                    details: [
+                        "uptimeSeconds": "\(Int(ProcessInfo.processInfo.systemUptime))"
+                    ]
+                )
             }
         }
         timer.resume()

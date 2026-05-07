@@ -20,6 +20,7 @@ public struct SettingsView: View {
                 appearanceCard
                 privacyCard
                 storageCard
+                diagnosticsCard
                 generalCard
             }
             .padding(22)
@@ -377,6 +378,48 @@ public struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.tertiary)
             }
+        }
+    }
+
+    // MARK: - Diagnostics
+
+    private var diagnosticsCard: some View {
+        card("Diagnostics", icon: "waveform.path.ecg", color: .secondary) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Remote anomaly reports")
+                        .font(.body)
+                    Text("Sends redacted performance and crash-adjacent events only.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.remoteDiagnosticsEnabled },
+                    set: { settings.remoteDiagnosticsEnabled = $0 }
+                ))
+                .labelsHidden()
+            }
+
+            row(label: "Endpoint") {
+                TextField("https://example.com/api/cmd/anomalies", text: Binding(
+                    get: { settings.remoteDiagnosticsEndpoint },
+                    set: { settings.remoteDiagnosticsEndpoint = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 286)
+            }
+
+            row(label: "Bearer token") {
+                SecureField("Optional", text: Binding(
+                    get: { settings.remoteDiagnosticsToken },
+                    set: { settings.remoteDiagnosticsToken = $0 }
+                ))
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 286)
+            }
+
+            note("Local diagnostics always stay on. Remote reporting is off unless a user enables it and an endpoint is configured.")
         }
     }
 
