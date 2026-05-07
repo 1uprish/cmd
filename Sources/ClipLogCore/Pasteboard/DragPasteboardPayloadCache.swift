@@ -40,10 +40,34 @@ final class DragPasteboardPayloadCache: @unchecked Sendable {
 
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
-            for entry in imageEntries.prefix(8) {
+            let batchStartedAt = Date()
+            let entriesToPrewarm = Array(imageEntries.prefix(8))
+            var succeeded = 0
+            var failed = 0
+
+            for entry in entriesToPrewarm {
                 let payload = self.imagePayload(for: entry)
-                payload.prewarm()
+                let result = payload.prewarm()
+                self.recordPrewarmResult(result, entry: entry)
+                if result.succeeded {
+                    succeeded += 1
+                } else {
+                    failed += 1
+                }
             }
+
+            DiagnosticsLogbook.shared.record(
+                "drag_payload_prewarm_batch",
+                category: "drag",
+                details: [
+                    "requested": "\(entries.count)",
+                    "imageCount": "\(imageEntries.count)",
+                    "attempted": "\(entriesToPrewarm.count)",
+                    "succeeded": "\(succeeded)",
+                    "failed": "\(failed)",
+                    "durationMs": "\(Int(Date().timeIntervalSince(batchStartedAt) * 1000))"
+                ]
+            )
         }
     }
 
@@ -73,6 +97,41 @@ final class DragPasteboardPayloadCache: @unchecked Sendable {
             entry.mediaPath ?? "",
             "\(entry.contentData.count)"
         ].joined(separator: "|")
+    }
+
+    private func recordPrewarmResult(_ result: DragPayloadPrewarmResult, entry: ClipEntry) {
+        let event: String
+        if result.succeeded {
+            event = result.durationMs >= 250 ? "slow_drag_payload_prewarm" : "drag_payload_prewarm_succeeded"
+        } else {
+            event = "drag_payload_prewarm_failed"
+        }
+
+        DiagnosticsLogbook.shared.record(
+            event,
+            category: "drag",
+            details: [
+                "entryID": entry.id.uuidString,
+                "contentHashPrefix": String(entry.contentHash.prefix(12)),
+                "contentBytes": "\(entry.contentData.count)",
+                "pngBytes": result.pngBytes.map(String.init) ?? "nil",
+                "fileURL": result.fileURL?.path ?? "nil",
+                "fileExists": "\(result.fileExists)",
+                "durationMs": "\(result.durationMs)",
+                "mediaPathPresent": "\(entry.mediaPath != nil)"
+            ]
+        )
+    }
+}
+
+struct DragPayloadPrewarmResult {
+    let pngBytes: Int?
+    let fileURL: URL?
+    let fileExists: Bool
+    let durationMs: Int
+
+    var succeeded: Bool {
+        pngBytes != nil && fileURL != nil && fileExists
     }
 }
 
@@ -135,9 +194,18 @@ final class ImageDragPayload: @unchecked Sendable {
         }
     }
 
-    func prewarm() {
-        _ = pngData()
-        _ = temporaryFileURL()
+    @discardableResult
+    func prewarm() -> DragPayloadPrewarmResult {
+        let startedAt = Date()
+        let png = pngData()
+        let fileURL = temporaryFileURL()
+        let fileExists = fileURL.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        return DragPayloadPrewarmResult(
+            pngBytes: png?.count,
+            fileURL: fileURL,
+            fileExists: fileExists,
+            durationMs: Int(Date().timeIntervalSince(startedAt) * 1000)
+        )
     }
 
     private var cacheFilename: String {

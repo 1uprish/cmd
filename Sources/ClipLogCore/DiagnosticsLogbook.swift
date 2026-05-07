@@ -32,6 +32,8 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
         "slow_slot_ingest",
         "slow_append_pasteboard_write",
         "slow_clipboard_write",
+        "drag_payload_prewarm_failed",
+        "slow_drag_payload_prewarm",
         "slow_drag_payload_materialize",
         "slow_drag_session_start",
         "slow_event_tap_callback"
