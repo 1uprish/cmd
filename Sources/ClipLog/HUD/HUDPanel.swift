@@ -650,6 +650,7 @@ public final class HUDPanel {
         guard let displayIndex = visibleIndices.firstIndex(of: index) else { return }
 
         if modifiers.contains(.shift) {
+            HUDHaptics.selectionChanged()
             let anchor = multiSelectionAnchorDisplayIndex ?? selectedDisplayIndex ?? displayIndex
             let lower = min(anchor, displayIndex)
             let upper = max(anchor, displayIndex)
@@ -660,6 +661,7 @@ public final class HUDPanel {
         }
 
         if modifiers.contains(.command) {
+            HUDHaptics.selectionChanged()
             if multiSelectedOriginalIndices.isEmpty {
                 multiSelectedOriginalIndices = selectionOriginalIndicesForDisplay()
             }
@@ -1710,7 +1712,7 @@ private final class HUDRowView: NSView {
         guard !writers.isEmpty else { return }
         guard let image else { return }
         dragStarted = true
-        NSHapticFeedbackManager.defaultPerformer.perform(.generic, performanceTime: .now)
+        HUDHaptics.dragStarted(count: dragEntries.count)
 
         let ghostSize = image.size
         let dragFrame = NSRect(
@@ -1773,7 +1775,7 @@ private final class HUDRowView: NSView {
     @objc private func copyTapped() {
         guard let index else { return }
         onCopy?(index)
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        HUDHaptics.copied()
         copyButton.image = NSImage(systemSymbolName: "checkmark", accessibilityDescription: "Copied")
         copyButton.contentTintColor = .systemGreen
         animateCopyConfirmation()
@@ -2124,11 +2126,46 @@ extension HUDRowView: NSDraggingSource {
     func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
         NSCursor.arrow.set()
         animateDragLift(active: false)
+        HUDHaptics.dragEnded(success: !operation.isEmpty)
         onDragEnd?(operation)
     }
 
     func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
         true
+    }
+}
+
+private enum HUDHaptics {
+    private static var lastPulse = Date.distantPast
+
+    static func copied() {
+        perform(.levelChange)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.045) {
+            perform(.alignment)
+        }
+    }
+
+    static func dragStarted(count: Int) {
+        perform(.levelChange)
+        guard count > 1 else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.055) {
+            perform(.generic)
+        }
+    }
+
+    static func dragEnded(success: Bool) {
+        perform(success ? .alignment : .generic)
+    }
+
+    static func selectionChanged() {
+        perform(.alignment)
+    }
+
+    private static func perform(_ pattern: NSHapticFeedbackManager.FeedbackPattern) {
+        let now = Date()
+        guard now.timeIntervalSince(lastPulse) > 0.035 else { return }
+        lastPulse = now
+        NSHapticFeedbackManager.defaultPerformer.perform(pattern, performanceTime: .now)
     }
 }
 
