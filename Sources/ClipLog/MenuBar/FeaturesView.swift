@@ -152,7 +152,7 @@ private struct Feature: Identifiable {
                 Item(title: "Cursor lens", shortcut: nil,
                      description: "A small lens opens from the cursor or active text field and shows the live item count, type mix, timeout, and combined preview."),
                 Item(title: "Toggle off", shortcut: "⌘ ⌘",
-                     description: "Tap Command twice again to end the gather session. It also turns off automatically after a short idle timeout."),
+                     description: "Tap Command twice again, press Escape, paste, or start typing to end the gather session. A longer safety timeout stays in the background."),
             ]
         ),
         Feature(

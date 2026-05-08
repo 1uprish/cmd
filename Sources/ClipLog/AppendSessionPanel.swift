@@ -5,14 +5,11 @@ final class AppendSessionPanel {
     static let shared = AppendSessionPanel()
 
     private let panel: NSPanel
-    private let rootView = NSView()
-    private let pointerView = GatherPointerView()
     private let container = NSVisualEffectView()
     private let statusDot = NSView()
-    private let titleLabel = NSTextField(labelWithString: "Gather")
+    private let titleLabel = NSTextField(labelWithString: "Gathering")
     private let countLabel = NSTextField(labelWithString: "0 clips")
     private let previewView = TeleprompterTextView()
-    private let pointerWidth: CGFloat = 22
     private var observer: NSObjectProtocol?
     private var followTimer: Timer?
     private var latestSnapshot = AppendSessionSnapshot(
@@ -26,13 +23,15 @@ final class AppendSessionPanel {
         expiresAt: nil
     )
     private var lastItemCount = 0
+    private var sessionCursor: NSPoint?
+    private var lastHapticAt = Date.distantPast
     private var latestAnchorFrame: NSRect?
     private var visibilityGeneration = 0
     private var lastRepositionFrame: NSRect?
 
     private init() {
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 420, height: 72),
+            contentRect: NSRect(x: 0, y: 0, width: 410, height: 62),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -74,45 +73,39 @@ final class AppendSessionPanel {
     }
 
     private func buildView() {
-        rootView.translatesAutoresizingMaskIntoConstraints = false
-        rootView.wantsLayer = true
-        rootView.layer?.masksToBounds = false
-
-        pointerView.translatesAutoresizingMaskIntoConstraints = false
-
         container.translatesAutoresizingMaskIntoConstraints = false
         container.material = .hudWindow
         container.blendingMode = .behindWindow
         container.state = .active
         container.wantsLayer = true
-        container.layer?.cornerRadius = 18
+        container.layer?.cornerRadius = 16
         container.layer?.cornerCurve = .continuous
         container.layer?.masksToBounds = true
         container.layer?.borderWidth = 1
-        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.2).cgColor
+        container.layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
 
         let content = NSView()
         content.translatesAutoresizingMaskIntoConstraints = false
         content.wantsLayer = true
-        content.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.2).cgColor
+        content.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.10).cgColor
 
         statusDot.translatesAutoresizingMaskIntoConstraints = false
         statusDot.wantsLayer = true
-        statusDot.layer?.cornerRadius = 5
-        statusDot.layer?.backgroundColor = NSColor.systemGreen.cgColor
-        statusDot.layer?.shadowColor = NSColor.systemGreen.cgColor
-        statusDot.layer?.shadowOpacity = 0.55
-        statusDot.layer?.shadowRadius = 8
+        statusDot.layer?.cornerRadius = 3.5
+        statusDot.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.72).cgColor
+        statusDot.layer?.shadowColor = NSColor.white.cgColor
+        statusDot.layer?.shadowOpacity = 0.22
+        statusDot.layer?.shadowRadius = 5
         statusDot.layer?.shadowOffset = .zero
 
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font = .systemFont(ofSize: 13, weight: .semibold)
-        titleLabel.textColor = .white
+        titleLabel.font = .systemFont(ofSize: 12, weight: .semibold)
+        titleLabel.textColor = NSColor.white.withAlphaComponent(0.88)
         titleLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         countLabel.translatesAutoresizingMaskIntoConstraints = false
-        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .medium)
-        countLabel.textColor = NSColor.white.withAlphaComponent(0.64)
+        countLabel.font = .monospacedDigitSystemFont(ofSize: 11, weight: .regular)
+        countLabel.textColor = NSColor.white.withAlphaComponent(0.52)
         countLabel.alignment = .right
         countLabel.setContentCompressionResistancePriority(.required, for: .horizontal)
 
@@ -123,46 +116,35 @@ final class AppendSessionPanel {
         content.addSubview(countLabel)
         content.addSubview(previewView)
         container.addSubview(content)
-        rootView.addSubview(pointerView)
-        rootView.addSubview(container)
-        panel.contentView = rootView
+        panel.contentView = container
 
         NSLayoutConstraint.activate([
-            pointerView.leadingAnchor.constraint(equalTo: rootView.leadingAnchor),
-            pointerView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            pointerView.widthAnchor.constraint(equalToConstant: pointerWidth),
-            pointerView.heightAnchor.constraint(equalToConstant: 28),
-
-            container.leadingAnchor.constraint(equalTo: pointerView.trailingAnchor, constant: -1),
-            container.trailingAnchor.constraint(equalTo: rootView.trailingAnchor),
-            container.topAnchor.constraint(equalTo: rootView.topAnchor),
-            container.bottomAnchor.constraint(equalTo: rootView.bottomAnchor),
-
             content.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             content.trailingAnchor.constraint(equalTo: container.trailingAnchor),
             content.topAnchor.constraint(equalTo: container.topAnchor),
             content.bottomAnchor.constraint(equalTo: container.bottomAnchor),
 
-            statusDot.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 16),
-            statusDot.topAnchor.constraint(equalTo: content.topAnchor, constant: 17),
-            statusDot.widthAnchor.constraint(equalToConstant: 10),
-            statusDot.heightAnchor.constraint(equalToConstant: 10),
+            statusDot.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 14),
+            statusDot.topAnchor.constraint(equalTo: content.topAnchor, constant: 15),
+            statusDot.widthAnchor.constraint(equalToConstant: 7),
+            statusDot.heightAnchor.constraint(equalToConstant: 7),
 
             titleLabel.leadingAnchor.constraint(equalTo: statusDot.trailingAnchor, constant: 10),
             titleLabel.centerYAnchor.constraint(equalTo: statusDot.centerYAnchor),
 
-            countLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -16),
+            countLabel.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -14),
             countLabel.centerYAnchor.constraint(equalTo: titleLabel.centerYAnchor),
             countLabel.leadingAnchor.constraint(greaterThanOrEqualTo: titleLabel.trailingAnchor, constant: 16),
 
             previewView.leadingAnchor.constraint(equalTo: titleLabel.leadingAnchor),
             previewView.trailingAnchor.constraint(equalTo: countLabel.trailingAnchor),
-            previewView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            previewView.heightAnchor.constraint(equalToConstant: 24),
+            previewView.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 6),
+            previewView.heightAnchor.constraint(equalToConstant: 22),
         ])
     }
 
     private func apply(_ snapshot: AppendSessionSnapshot) {
+        let wasActive = latestSnapshot.isActive
         let previousItemCount = lastItemCount
         latestSnapshot = snapshot
         lastItemCount = snapshot.itemCount
@@ -172,7 +154,11 @@ final class AppendSessionPanel {
             return
         }
 
-        titleLabel.stringValue = "Gather"
+        if !wasActive {
+            sessionCursor = NSEvent.mouseLocation
+        }
+
+        titleLabel.stringValue = "Gathering"
         countLabel.stringValue = countText(for: snapshot)
         previewView.setSegments(previewSegments(for: snapshot))
         reposition(animated: panel.isVisible)
@@ -188,7 +174,7 @@ final class AppendSessionPanel {
         let itemWord = snapshot.itemCount == 1 ? "item" : "items"
         parts.append("\(snapshot.itemCount) \(itemWord)")
         if snapshot.imageCount > 0, snapshot.textCount > 0 {
-            parts.append("mixed")
+            parts.append("\(snapshot.textCount)t \(snapshot.imageCount)i")
         } else if snapshot.imageCount > 0 {
             let imageWord = snapshot.imageCount == 1 ? "image" : "images"
             parts.append("\(snapshot.imageCount) \(imageWord)")
@@ -197,7 +183,9 @@ final class AppendSessionPanel {
         }
         if let expiresAt = snapshot.expiresAt {
             let remaining = max(0, Int(ceil(expiresAt.timeIntervalSinceNow)))
-            parts.append("\(remaining)s")
+            if remaining <= 30 {
+                parts.append("\(remaining)s")
+            }
         }
         return parts.joined(separator: " · ")
     }
@@ -223,22 +211,20 @@ final class AppendSessionPanel {
         DiagnosticsLogbook.shared.record("append_indicator_shown", category: "append")
         panel.alphaValue = 0
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.transform = CATransform3DMakeScale(0.82, 0.82, 1)
+        panel.contentView?.layer?.transform = CATransform3DMakeScale(0.94, 0.94, 1)
         panel.orderFrontRegardless()
-        animateContentScale(from: 0.82, to: 1.0, duration: 0.38)
+        animateContentScale(from: 0.94, to: 1.0, duration: 0.22)
 
         var frame = panel.frame
-        frame.origin.x -= 12
-        frame.origin.y -= 4
+        frame.origin.y -= 5
         panel.setFrame(frame, display: true)
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.38
+            context.duration = 0.22
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
             var target = panel.frame
-            target.origin.x += 12
-            target.origin.y += 4
+            target.origin.y += 5
             panel.animator().setFrame(target, display: true)
         }
     }
@@ -252,14 +238,13 @@ final class AppendSessionPanel {
         DiagnosticsLogbook.shared.record("append_indicator_hidden", category: "append")
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.removeAllAnimations()
-        animateContentScale(from: 1.0, to: 0.82, duration: 0.22)
+        animateContentScale(from: 1.0, to: 0.94, duration: 0.16)
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.24
+            context.duration = 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
             var frame = panel.frame
-            frame.origin.x -= 12
-            frame.origin.y -= 4
+            frame.origin.y -= 5
             panel.animator().setFrame(frame, display: true)
         } completionHandler: {
             guard self.visibilityGeneration == generation,
@@ -268,6 +253,7 @@ final class AppendSessionPanel {
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1
             self.panel.contentView?.layer?.transform = CATransform3DIdentity
+            self.sessionCursor = nil
             self.lastRepositionFrame = nil
         }
     }
@@ -293,18 +279,16 @@ final class AppendSessionPanel {
 
     private func pulseCapture() {
         guard panel.isVisible else { return }
-        NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
-        let pulse = CABasicAnimation(keyPath: "transform.scale")
-        pulse.fromValue = 0.96
-        pulse.toValue = 1.0
-        pulse.duration = 0.18
-        pulse.timingFunction = CAMediaTimingFunction(controlPoints: 0.2, 0.9, 0.2, 1.0)
-        container.layer?.add(pulse, forKey: "cmd.gather.capturePulse")
+        let now = Date()
+        if now.timeIntervalSince(lastHapticAt) > 0.16 {
+            lastHapticAt = now
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
 
         let dotPulse = CABasicAnimation(keyPath: "opacity")
         dotPulse.fromValue = 1.0
-        dotPulse.toValue = 0.45
-        dotPulse.duration = 0.16
+        dotPulse.toValue = 0.38
+        dotPulse.duration = 0.12
         dotPulse.autoreverses = true
         statusDot.layer?.add(dotPulse, forKey: "cmd.gather.dotPulse")
     }
@@ -313,7 +297,7 @@ final class AppendSessionPanel {
         guard latestSnapshot.isActive else { return }
         let screen = currentScreen()
         let visible = screen.visibleFrame
-        let cursor = NSEvent.mouseLocation
+        let cursor = sessionCursor ?? NSEvent.mouseLocation
         latestAnchorFrame = AppendTextInputAnchorLocator.frameNearCursor(cursor)
 
         let frame = panelFrame(cursor: cursor, anchor: latestAnchorFrame, visibleFrame: visible)
@@ -339,16 +323,15 @@ final class AppendSessionPanel {
     }
 
     private func panelFrame(cursor: NSPoint, anchor: NSRect?, visibleFrame visible: NSRect) -> NSRect {
-        let height: CGFloat = 72
+        let height: CGFloat = 62
         let horizontalMargin: CGFloat = 24
-        let bubbleWidth: CGFloat
-        if let anchor {
-            bubbleWidth = min(max(anchor.width, 320), min(560, visible.width - horizontalMargin * 2 - pointerWidth))
-        } else {
-            bubbleWidth = min(420, visible.width - horizontalMargin * 2 - pointerWidth)
-        }
-        let width = bubbleWidth + pointerWidth - 1
-        let x = clamp(cursor.x + 12, min: visible.minX + horizontalMargin, max: visible.maxX - width - horizontalMargin)
+        let maxWidth = min(460, visible.width - horizontalMargin * 2)
+        let width = max(340, min(maxWidth, anchor.map { $0.width * 0.72 } ?? 410))
+        let preferredRightX = cursor.x + 14
+        let preferredLeftX = cursor.x - width - 14
+        let x = preferredRightX + width <= visible.maxX - horizontalMargin
+            ? preferredRightX
+            : clamp(preferredLeftX, min: visible.minX + horizontalMargin, max: visible.maxX - width - horizontalMargin)
 
         if let anchor {
             let aboveY = anchor.maxY + 10
@@ -392,37 +375,6 @@ final class AppendSessionPanel {
     private func stopFollowingScreen() {
         followTimer?.invalidate()
         followTimer = nil
-    }
-}
-
-private final class GatherPointerView: NSView {
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.masksToBounds = false
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        wantsLayer = true
-        layer?.masksToBounds = false
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        super.draw(dirtyRect)
-
-        let path = NSBezierPath()
-        path.move(to: NSPoint(x: bounds.minX + 2, y: bounds.midY))
-        path.line(to: NSPoint(x: bounds.maxX, y: bounds.maxY - 2))
-        path.line(to: NSPoint(x: bounds.maxX, y: bounds.minY + 2))
-        path.close()
-
-        NSColor.black.withAlphaComponent(0.54).setFill()
-        path.fill()
-
-        NSColor.white.withAlphaComponent(0.16).setStroke()
-        path.lineWidth = 1
-        path.stroke()
     }
 }
 

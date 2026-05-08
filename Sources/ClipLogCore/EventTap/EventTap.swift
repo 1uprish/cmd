@@ -33,6 +33,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     public var onHUDTrigger: ((UInt64) -> Void)?
     public var onPassthrough: (() -> Void)?
     public var onAppendGesture: (() -> Void)?
+    public var onAppendInteraction: ((String) -> Void)?
     public var onQueuedPaste: (() -> Void)?
 
     public var onHUDDismiss: ((UInt64) -> Void)?
@@ -56,6 +57,12 @@ public final class ClipLogEventTap: @unchecked Sendable {
         }
     }
 
+    public func setAppendSessionActive(_ active: Bool) {
+        tapQueue.async {
+            self.appendSessionActive = active
+        }
+    }
+
 
     // MARK: - Private state (all access serialised through tapQueue)
 
@@ -73,6 +80,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private var lastCommandTapTime: Date?
     private var commandKeyIsDown = false
     private var commandTapClean = false
+    private var appendSessionActive = false
     private let appendGestureInterval: TimeInterval = 0.65
 
     // State machine
@@ -196,6 +204,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
         switch type {
 
         case .keyDown:
+            if appendSessionActive, let reason = appendInteractionReason(for: event) {
+                notifyAppendInteraction(reason)
+            }
             if event.flags.contains(.maskCommand) {
                 commandTapClean = false
             }
@@ -331,8 +342,10 @@ public final class ClipLogEventTap: @unchecked Sendable {
                 ]
             )
             if queuedPaste {
+                notifyAppendInteraction("queued_paste")
                 DispatchQueue.main.async { self.onQueuedPaste?() }
             } else {
+                notifyAppendInteraction("paste")
                 synthesiseCommandV()
                 DispatchQueue.main.async { self.onPassthrough?() }
             }
@@ -388,8 +401,10 @@ public final class ClipLogEventTap: @unchecked Sendable {
                 ]
             )
             if queuedPaste {
+                notifyAppendInteraction("queued_paste")
                 DispatchQueue.main.async { self.onQueuedPaste?() }
             } else {
+                notifyAppendInteraction("paste")
                 synthesiseCommandV()
                 DispatchQueue.main.async { self.onPassthrough?() }
             }
@@ -510,6 +525,50 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     private func isKeyRepeat(_ event: CGEvent) -> Bool {
         event.getIntegerValueField(.keyboardEventAutorepeat) != 0
+    }
+
+    private func appendInteractionReason(for event: CGEvent) -> String? {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        if keyCode == Self.kVK_Escape {
+            return "escape"
+        }
+        if isCommandV(event) {
+            return nil
+        }
+        guard !isKeyRepeat(event) else { return nil }
+        let blockingModifiers = event.flags.intersection([
+            .maskCommand, .maskAlternate, .maskControl
+        ])
+        guard blockingModifiers.isEmpty else { return nil }
+        if let chars = event.getUnicode(), chars.contains(where: { !$0.isWhitespace }) {
+            return "typing"
+        }
+        if [
+            Self.kVK_Delete,
+            Self.kVK_Return,
+            Self.kVK_KeypadEnter,
+            Self.kVK_UpArrow,
+            Self.kVK_DownArrow,
+        ].contains(keyCode) {
+            return "key_\(keyCode)"
+        }
+        return nil
+    }
+
+    private func notifyAppendInteraction(_ reason: String) {
+        guard appendSessionActive else { return }
+        appendSessionActive = false
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "interaction_end",
+            details: ["reason": reason]
+        )
+        DispatchQueue.main.async { self.onAppendInteraction?(reason) }
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "append",
+            action: "interaction_end",
+            details: ["success": "true", "reason": reason]
+        )
     }
 
     private func isOnlyCommandModifier(_ event: CGEvent) -> Bool {

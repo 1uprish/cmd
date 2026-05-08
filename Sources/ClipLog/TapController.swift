@@ -10,6 +10,7 @@ final class TapController {
     private var menuBarController: MenuBarController?
     private var sensitivePurgeTimer: Timer?
     private var settingsCancellables = Set<AnyCancellable>()
+    private var appendSessionObserver: NSObjectProtocol?
 
     // Called immediately on launch — shows menu bar, starts storage + watcher.
     // Does NOT require Accessibility permission.
@@ -36,6 +37,14 @@ final class TapController {
             menuBarController = mbc
             mbc.setup()
             AppendSessionPanel.shared.start()
+            appendSessionObserver = NotificationCenter.default.addObserver(
+                forName: .cmdAppendSessionChanged,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let snapshot = notification.object as? AppendSessionSnapshot else { return }
+                self?.eventTap.setAppendSessionActive(snapshot.isActive)
+            }
 
             // Single onNewEntry closure — ingest into slots AND refresh open history.
             pasteboardWatcher.onNewEntry = { [weak self, weak slots, weak mbc] entry in
@@ -101,6 +110,9 @@ final class TapController {
             eventTap.onAppendGesture = {
                 watcher.enableAppendMode()
             }
+            eventTap.onAppendInteraction = { reason in
+                watcher.endAppendMode(reason: reason)
+            }
 
             // ⌘V while paste queue is non-empty → advance the queue instead of showing HUD.
             eventTap.onQueuedPaste = {
@@ -125,6 +137,10 @@ final class TapController {
     }
 
     func stop() {
+        if let appendSessionObserver {
+            NotificationCenter.default.removeObserver(appendSessionObserver)
+            self.appendSessionObserver = nil
+        }
         sensitivePurgeTimer?.invalidate()
         sensitivePurgeTimer = nil
         settingsCancellables.removeAll()

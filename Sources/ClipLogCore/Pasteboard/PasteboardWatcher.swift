@@ -101,17 +101,29 @@ public final class PasteboardWatcher: @unchecked Sendable {
     /// it as native image pasteboard objects.
     private var appendSession: AppendSession?
     private var appendExpiryWorkItem: DispatchWorkItem?
-    private var appendSessionTimeout: TimeInterval = 8
+    private var appendSessionTimeout: TimeInterval = 120
 
     /// Start or stop append collection. The name is kept for the existing event
     /// tap call site, but the behavior is now a session instead of a one-shot.
-    public func enableAppendMode(expiringAfter timeout: TimeInterval = 8) {
+    public func enableAppendMode(expiringAfter timeout: TimeInterval = 120) {
         queue.async {
             if self.appendSession != nil {
                 self.endAppendSession()
             } else {
                 self.startAppendSession(expiringAfter: timeout)
             }
+        }
+    }
+
+    public func endAppendMode(reason: String) {
+        queue.async {
+            guard self.appendSession != nil else { return }
+            DiagnosticsLogbook.shared.record(
+                "append_end_requested",
+                category: "append",
+                details: ["reason": reason]
+            )
+            self.endAppendSession(reason: reason)
         }
     }
 
@@ -798,22 +810,26 @@ public final class PasteboardWatcher: @unchecked Sendable {
     private func scheduleAppendExpiry(after timeout: TimeInterval) {
         appendExpiryWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
-            self?.endAppendSession()
+            self?.endAppendSession(reason: "safety_timeout")
         }
         appendExpiryWorkItem = workItem
         queue.asyncAfter(deadline: .now() + timeout, execute: workItem)
     }
 
-    private func endAppendSession() {
-        DiagnosticsLogbook.shared.actionInput(feature: "append", action: "end_session")
-        DiagnosticsLogbook.shared.record("append_ended", category: "append")
+    private func endAppendSession(reason: String = "toggle") {
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "append",
+            action: "end_session",
+            details: ["reason": reason]
+        )
+        DiagnosticsLogbook.shared.record("append_ended", category: "append", details: ["reason": reason])
         appendExpiryWorkItem?.cancel()
         appendExpiryWorkItem = nil
         DiagnosticsLogbook.shared.actionProcess(feature: "append", action: "end_session", details: ["step": "commit_if_needed"])
         commitAppendSessionIfNeeded()
         appendSession = nil
         publishAppendSnapshot(isActive: false)
-        DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "end_session", details: ["success": "true"])
+        DiagnosticsLogbook.shared.actionOutput(feature: "append", action: "end_session", details: ["success": "true", "reason": reason])
     }
 
     private func shutdownAppendSession() {
