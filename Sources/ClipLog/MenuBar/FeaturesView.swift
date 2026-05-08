@@ -145,14 +145,14 @@ private struct Feature: Identifiable {
         ),
         Feature(
             icon: "doc.on.doc.fill",
-            title: "Append Mode",
+            title: "Gather Mode",
             items: [
                 Item(title: "Collect multiple copies", shortcut: "⌘ ⌘",
-                     description: "Tap Command twice to turn Append On. Copied text joins one combined clipboard item, and copied images are carried with it for rich paste targets."),
-                Item(title: "Visible collection state", shortcut: nil,
-                     description: "A small bottom indicator follows your active screen and shows the live clip count, character count, and combined preview."),
+                     description: "Tap Command twice to start Gather. Copied text joins one combined clipboard item, and copied images are carried with it for rich paste targets."),
+                Item(title: "Cursor lens", shortcut: nil,
+                     description: "A small lens opens from the cursor or active text field and shows the live item count, type mix, timeout, and combined preview."),
                 Item(title: "Toggle off", shortcut: "⌘ ⌘",
-                     description: "Tap Command twice again to end the append session. It also turns off automatically after a short idle timeout."),
+                     description: "Tap Command twice again to end the gather session. It also turns off automatically after a short idle timeout."),
             ]
         ),
         Feature(

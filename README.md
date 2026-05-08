@@ -2,13 +2,13 @@
 
 `CMD` is a native macOS clipboard register. Copy normally, then hold `Cmd+V` to open a lightweight HUD beside the current text field and choose from recent clipboard items.
 
-The app is built for the everyday Mac flow: text, links, code, files, images, mixed clipboard payloads, append sessions, drag-and-drop, and quick paste without leaving the app you are already using.
+The app is built for the everyday Mac flow: text, links, code, files, images, mixed clipboard payloads, Gather sessions, drag-and-drop, and quick paste without leaving the app you are already using.
 
 ## Features
 
 - **Hold `Cmd+V` HUD**: opens a compact floating register near the active text field.
 - **Clipboard history**: keeps reusable text, URLs, code, files, colors, rich text, and images.
-- **Append mode**: double `Cmd` starts an append session so multiple copied items can become one paste-ready payload.
+- **Gather mode**: double `Cmd` opens a cursor-anchored Gather Lens so multiple copied items can become one paste-ready payload.
 - **Image and mixed-content support**: handles image-only and text-plus-image clipboard payloads.
 - **Drag and drop**: drag saved clips into compatible apps.
 - **Sensitive item handling**: secrets and password-like values can be hidden and expired.

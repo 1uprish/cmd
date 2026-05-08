@@ -88,6 +88,12 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 total + (clip.imageData == nil ? 0 : 1)
             }
         }
+
+        var textCount: Int {
+            clips.reduce(0) { total, clip in
+                total + (clip.textValue?.isEmpty == false ? 1 : 0)
+            }
+        }
     }
 
     /// Persistent append collection. While active, every copied text value is
@@ -855,14 +861,22 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 isActive: true,
                 itemCount: session.clips.count,
                 characterCount: session.characterCount,
-                preview: session.previewText
+                preview: session.previewText,
+                textCount: session.textCount,
+                imageCount: session.imageCount,
+                imageByteCount: session.imageByteCount,
+                expiresAt: session.expiresAt
             )
         } else {
             snapshot = AppendSessionSnapshot(
                 isActive: false,
                 itemCount: 0,
                 characterCount: 0,
-                preview: ""
+                preview: "",
+                textCount: 0,
+                imageCount: 0,
+                imageByteCount: 0,
+                expiresAt: nil
             )
         }
 
@@ -1420,12 +1434,37 @@ public struct AppendSessionSnapshot: Sendable {
     public let itemCount: Int
     public let characterCount: Int
     public let preview: String
+    public let textCount: Int
+    public let imageCount: Int
+    public let imageByteCount: Int
+    public let expiresAt: Date?
 
-    public init(isActive: Bool, itemCount: Int, characterCount: Int, preview: String) {
+    public var hasText: Bool {
+        textCount > 0
+    }
+
+    public var hasImages: Bool {
+        imageCount > 0
+    }
+
+    public init(
+        isActive: Bool,
+        itemCount: Int,
+        characterCount: Int,
+        preview: String,
+        textCount: Int = 0,
+        imageCount: Int = 0,
+        imageByteCount: Int = 0,
+        expiresAt: Date? = nil
+    ) {
         self.isActive = isActive
         self.itemCount = itemCount
         self.characterCount = characterCount
         self.preview = preview
+        self.textCount = textCount
+        self.imageCount = imageCount
+        self.imageByteCount = imageByteCount
+        self.expiresAt = expiresAt
     }
 }
 
