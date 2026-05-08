@@ -84,6 +84,28 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private var state: State = .idle
     private var nextSessionID: UInt64 = 0
 
+    public func hudDidShowExternally(sessionID: UInt64) {
+        tapQueue.async { [weak self] in
+            guard let self else { return }
+            DiagnosticsLogbook.shared.actionInput(
+                feature: "event_tap",
+                action: "hud_did_show_externally",
+                details: ["sessionID": "\(sessionID)"]
+            )
+            if case .pendingHold(_, let timer, _, _) = self.state {
+                timer.cancel()
+            }
+            self.state = .hudActive(sessionID: sessionID)
+            self.commandTapClean = false
+            self.lastCommandTapTime = nil
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "hud_did_show_externally",
+                details: ["success": "true", "sessionID": "\(sessionID)"]
+            )
+        }
+    }
+
     // MARK: - Start / stop
 
     public func start() throws {
@@ -611,6 +633,8 @@ public final class ClipLogEventTap: @unchecked Sendable {
             else { return }
             DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "hud_did_dismiss", details: ["sessionID": "\(sessionID)"])
             self.state = .idle
+            self.commandTapClean = false
+            self.lastCommandTapTime = nil
             DiagnosticsLogbook.shared.actionOutput(feature: "event_tap", action: "hud_did_dismiss", details: ["success": "true"])
         }
     }

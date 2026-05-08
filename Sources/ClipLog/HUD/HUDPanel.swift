@@ -15,6 +15,7 @@ public final class HUDPanel {
 
     public weak var slotManager: SlotManager?
     public var onDismiss: ((UInt64) -> Void)?
+    public var onRestoreAfterCancelledDrag: ((UInt64) -> Void)?
 
     private enum Layout {
         static let fallbackWidth: CGFloat = 520
@@ -394,7 +395,9 @@ public final class HUDPanel {
                 "selectedCount": "\(snapshot.selectedOriginalIndices.count)"
             ]
         )
-        show(sessionID: UInt64.random(in: 1...UInt64.max), slots: snapshot.slots)
+        let restoredSessionID = UInt64.random(in: 1...UInt64.max)
+        show(sessionID: restoredSessionID, slots: snapshot.slots)
+        onRestoreAfterCancelledDrag?(restoredSessionID)
         filterText = snapshot.filterText
         selectedDisplayIndex = snapshot.selectedDisplayIndex
         multiSelectedOriginalIndices = snapshot.selectedOriginalIndices.count > 1

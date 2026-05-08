@@ -9,6 +9,12 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
             .appendingPathComponent("cmd.log", isDirectory: false)
     }
 
+    public var errorLogFileURL: URL {
+        AppStoragePaths.applicationSupportDirectory
+            .appendingPathComponent("Diagnostics", isDirectory: true)
+            .appendingPathComponent("cmd-errors.log", isDirectory: false)
+    }
+
     private struct Entry: Codable {
         let timestamp: String
         let category: String
@@ -19,7 +25,11 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
     private let queue = DispatchQueue(label: "com.cmd.diagnostics", qos: .utility)
     private let encoder = JSONEncoder()
     private var lastRemoteReportAt: [String: Date] = [:]
+    private var lastPruneAt = Date.distantPast
     private let remoteReportCooldown: TimeInterval = 60
+    private let allLogRetention: TimeInterval = 3 * 60 * 60
+    private let errorLogRetention: TimeInterval = 7 * 24 * 60 * 60
+    private let pruneInterval: TimeInterval = 5 * 60
     private let anomalyEvents: Set<String> = [
         "startup_failed",
         "database_open_failed",
@@ -63,26 +73,33 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
                     at: url.deletingLastPathComponent(),
                     withIntermediateDirectories: true
                 )
-                self.rotateIfNeeded(at: url)
                 let entry = Entry(
                     timestamp: self.timestampFormatter.string(from: entryDate),
                     category: category,
                     event: event,
                     details: safeDetails
                 )
+                self.pruneIfNeeded(now: entryDate)
                 let data = try encoder.encode(entry) + Data([0x0A])
-                if FileManager.default.fileExists(atPath: url.path) {
-                    let handle = try FileHandle(forWritingTo: url)
-                    defer { try? handle.close() }
-                    try handle.seekToEnd()
-                    try handle.write(contentsOf: data)
-                } else {
-                    try data.write(to: url, options: .atomic)
+                try self.append(data, to: url)
+                if self.isErrorEntry(entry) {
+                    try self.append(data, to: self.errorLogFileURL)
                 }
                 self.reportAnomalyIfNeeded(entry: entry)
             } catch {
                 // Diagnostics must never affect clipboard behavior.
             }
+        }
+    }
+
+    private func append(_ data: Data, to url: URL) throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            let handle = try FileHandle(forWritingTo: url)
+            defer { try? handle.close() }
+            try handle.seekToEnd()
+            try handle.write(contentsOf: data)
+        } else {
+            try data.write(to: url, options: .atomic)
         }
     }
 
@@ -127,16 +144,59 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
         record("feature_action_\(stage)", category: feature, details: merged)
     }
 
-    private func rotateIfNeeded(at url: URL) {
-        guard let attributes = try? FileManager.default.attributesOfItem(atPath: url.path),
-              let size = attributes[.size] as? NSNumber,
-              size.int64Value > 2 * 1024 * 1024
+    private func pruneIfNeeded(now: Date) {
+        guard now.timeIntervalSince(lastPruneAt) >= pruneInterval else { return }
+        lastPruneAt = now
+        pruneLog(at: logFileURL, keepingEntriesSince: now.addingTimeInterval(-allLogRetention))
+        pruneLog(at: errorLogFileURL, keepingEntriesSince: now.addingTimeInterval(-errorLogRetention))
+        removeLegacyRotatedLog()
+    }
+
+    private func pruneLog(at url: URL, keepingEntriesSince cutoff: Date) {
+        guard FileManager.default.fileExists(atPath: url.path),
+              let data = try? Data(contentsOf: url),
+              !data.isEmpty
         else { return }
 
-        let rotated = url.deletingLastPathComponent()
+        let newline = Data([0x0A])
+        var kept = Data()
+        for line in data.split(separator: 0x0A, omittingEmptySubsequences: true) {
+            guard let entry = try? decoder.decode(Entry.self, from: Data(line)),
+                  let timestamp = timestampFormatter.date(from: entry.timestamp)
+            else { continue }
+            if timestamp >= cutoff {
+                kept.append(line)
+                kept.append(newline)
+            }
+        }
+        try? kept.write(to: url, options: .atomic)
+    }
+
+    private func removeLegacyRotatedLog() {
+        let rotated = logFileURL.deletingLastPathComponent()
             .appendingPathComponent("cmd.log.1", isDirectory: false)
         try? FileManager.default.removeItem(at: rotated)
-        try? FileManager.default.moveItem(at: url, to: rotated)
+    }
+
+    private var decoder: JSONDecoder {
+        JSONDecoder()
+    }
+
+    private func isErrorEntry(_ entry: Entry) -> Bool {
+        if anomalyEvents.contains(entry.event) { return true }
+        if entry.details["success"] == "false" { return true }
+        let lowered = entry.event.lowercased()
+        return [
+            "error",
+            "failed",
+            "failure",
+            "timed_out",
+            "denied",
+            "disabled",
+            "not_trusted",
+            "slow_",
+            "dropped"
+        ].contains { lowered.contains($0) }
     }
 
     private func reportAnomalyIfNeeded(entry: Entry) {

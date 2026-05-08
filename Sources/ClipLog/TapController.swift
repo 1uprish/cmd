@@ -66,6 +66,10 @@ final class TapController {
                 self?.eventTap.hudDidDismiss(sessionID: sessionID)
             }
 
+            HUDPanel.shared.onRestoreAfterCancelledDrag = { [weak self] sessionID in
+                self?.eventTap.hudDidShowExternally(sessionID: sessionID)
+            }
+
             // Safety net: lets the tap self-heal if hudDidDismiss was never called.
             // Called on tapQueue; panel.isVisible is thread-safe (read-only property).
             eventTap.isHUDActuallyVisible = { HUDPanel.shared.isVisible }
