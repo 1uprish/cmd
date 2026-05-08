@@ -23,7 +23,6 @@ final class AppendSessionPanel {
         expiresAt: nil
     )
     private var lastItemCount = 0
-    private var sessionCursor: NSPoint?
     private var lastHapticAt = Date.distantPast
     private var latestAnchorFrame: NSRect?
     private var visibilityGeneration = 0
@@ -144,7 +143,6 @@ final class AppendSessionPanel {
     }
 
     private func apply(_ snapshot: AppendSessionSnapshot) {
-        let wasActive = latestSnapshot.isActive
         let previousItemCount = lastItemCount
         latestSnapshot = snapshot
         lastItemCount = snapshot.itemCount
@@ -152,10 +150,6 @@ final class AppendSessionPanel {
         guard snapshot.isActive else {
             hide()
             return
-        }
-
-        if !wasActive {
-            sessionCursor = NSEvent.mouseLocation
         }
 
         titleLabel.stringValue = "Gathering"
@@ -253,7 +247,6 @@ final class AppendSessionPanel {
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1
             self.panel.contentView?.layer?.transform = CATransform3DIdentity
-            self.sessionCursor = nil
             self.lastRepositionFrame = nil
         }
     }
@@ -297,7 +290,7 @@ final class AppendSessionPanel {
         guard latestSnapshot.isActive else { return }
         let screen = currentScreen()
         let visible = screen.visibleFrame
-        let cursor = sessionCursor ?? NSEvent.mouseLocation
+        let cursor = NSEvent.mouseLocation
         latestAnchorFrame = AppendTextInputAnchorLocator.frameNearCursor(cursor)
 
         let frame = panelFrame(cursor: cursor, anchor: latestAnchorFrame, visibleFrame: visible)
