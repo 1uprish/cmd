@@ -96,6 +96,30 @@ public final class PasteboardWatcher: @unchecked Sendable {
         }
     }
 
+    private struct CapturedImagePayload {
+        let data: Data
+        let pasteboardType: NSPasteboard.PasteboardType
+
+        var fileExtension: String {
+            switch pasteboardType {
+            case .png, NSPasteboard.PasteboardType("public.png"):
+                return "png"
+            case NSPasteboard.PasteboardType("public.jpeg"):
+                return "jpg"
+            case NSPasteboard.PasteboardType("public.heic"):
+                return "heic"
+            case NSPasteboard.PasteboardType("public.heif"):
+                return "heif"
+            case NSPasteboard.PasteboardType("com.compuserve.gif"):
+                return "gif"
+            case NSPasteboard.PasteboardType("org.webmproject.webp"):
+                return "webp"
+            default:
+                return "img"
+            }
+        }
+    }
+
     /// Persistent append collection. While active, every copied text value is
     /// merged into one clipboard payload, and copied images are written beside
     /// it as native image pasteboard objects.
@@ -969,7 +993,8 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         case .image:
             let imageStartedAt = Date()
-            guard let originalData = imageData(from: pb) else { return nil }
+            guard let payload = rawImagePayload(from: pb) else { return nil }
+            let originalData = payload.data
             let imageDataMs = Self.milliseconds(since: imageStartedAt)
             if originalData.count > Self.maxInlineImageBytes {
                 Self.logger.info("Skipped oversized image (\(originalData.count) bytes)")
@@ -982,7 +1007,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
             }
 
             let mediaUUID = UUID()
-            let filename  = "\(mediaUUID.uuidString).png"
+            let filename = "\(mediaUUID.uuidString).\(payload.fileExtension)"
             let mediaDir = AppStoragePaths.mediaDirectory
             let destURL  = mediaDir.appendingPathComponent(filename)
 
@@ -994,9 +1019,6 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 return nil
             }
 
-            let thumbnailStartedAt = Date()
-            guard let thumbnailJPEG = makeThumbnail(from: originalData) else { return nil }
-            let thumbnailMs = Self.milliseconds(since: thumbnailStartedAt)
             let totalMs = Self.milliseconds(since: imageStartedAt)
             if totalMs >= 250 {
                 DiagnosticsLogbook.shared.record(
@@ -1005,7 +1027,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
                     details: [
                         "durationMs": "\(totalMs)",
                         "imageDataMs": "\(imageDataMs)",
-                        "thumbnailMs": "\(thumbnailMs)",
+                        "thumbnailMs": "0",
                         "bytes": "\(originalData.count)"
                     ]
                 )
@@ -1013,7 +1035,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
             return ClipEntry(
                 contentType: .image,
-                contentData: thumbnailJPEG,
+                contentData: originalData,
                 contentHash: sha256(originalData),
                 sourceBundleID: sourceBundle,
                 charCount: nil,
@@ -1134,6 +1156,32 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 if let data = boundedData(from: item, forType: type, maxBytes: Self.maxInlineImageBytes),
                    let normalized = normalizedPNGData(from: data) {
                     return normalized
+                }
+            }
+        }
+
+        DiagnosticsLogbook.shared.record(
+            "tiff_image_capture_skipped",
+            category: "pasteboard",
+            details: ["reason": "tiff_auto_capture_deferred"]
+        )
+
+        return nil
+    }
+
+    private func rawImagePayload(from pb: NSPasteboard) -> CapturedImagePayload? {
+        for type in Self.compressedImagePasteboardTypes {
+            if let data = boundedData(from: pb, forType: type, maxBytes: Self.maxInlineImageBytes),
+               !data.isEmpty {
+                return CapturedImagePayload(data: data, pasteboardType: type)
+            }
+        }
+
+        for item in pb.pasteboardItems ?? [] {
+            for type in Self.compressedImagePasteboardTypes {
+                if let data = boundedData(from: item, forType: type, maxBytes: Self.maxInlineImageBytes),
+                   !data.isEmpty {
+                    return CapturedImagePayload(data: data, pasteboardType: type)
                 }
             }
         }
