@@ -24,14 +24,14 @@ final class AppendSessionPanel {
     )
     private var lastItemCount = 0
     private var lastHapticAt = Date.distantPast
-    private var latestAnchorFrame: NSRect?
     private var visibilityGeneration = 0
     private var lastRepositionFrame: NSRect?
-    private var lastAnchorRefreshAt = Date.distantPast
     private var lastMotionTickAt: Date?
+    private var lastCountText = ""
     private var motionVelocity = CGPoint.zero
     private let clickySpringResponse: CGFloat = 0.20
     private let clickySpringDampingFraction: CGFloat = 0.60
+    private let maximumMotionVelocity: CGFloat = 3_400
 
     private init() {
         panel = NSPanel(
@@ -158,7 +158,7 @@ final class AppendSessionPanel {
         }
 
         titleLabel.stringValue = "Gathering"
-        countLabel.stringValue = countText(for: snapshot)
+        updateCountLabelIfNeeded()
         previewView.setSegments(previewSegments(for: snapshot))
         reposition(animated: panel.isVisible)
         show()
@@ -299,12 +299,8 @@ final class AppendSessionPanel {
         let visible = screen.visibleFrame
         let cursor = NSEvent.mouseLocation
         let now = Date()
-        if now.timeIntervalSince(lastAnchorRefreshAt) > 0.22 || latestAnchorFrame == nil {
-            latestAnchorFrame = AppendTextInputAnchorLocator.frameNearCursor(cursor)
-            lastAnchorRefreshAt = now
-        }
 
-        let frame = panelFrame(cursor: cursor, anchor: latestAnchorFrame, visibleFrame: visible)
+        let frame = panelFrame(cursor: cursor, visibleFrame: visible)
         if !animated || !panel.isVisible,
            let lastRepositionFrame,
            abs(lastRepositionFrame.origin.x - frame.origin.x) < 1,
@@ -316,7 +312,7 @@ final class AppendSessionPanel {
         lastRepositionFrame = frame
 
         guard animated, panel.isVisible else {
-            panel.setFrame(frame.integral, display: true)
+            panel.setFrame(frame, display: true)
             motionVelocity = .zero
             lastMotionTickAt = now
             return
@@ -338,6 +334,13 @@ final class AppendSessionPanel {
         motionVelocity.x += (dx * omega * omega - damping * motionVelocity.x) * dt
         motionVelocity.y += (dy * omega * omega - damping * motionVelocity.y) * dt
 
+        let speed = hypot(motionVelocity.x, motionVelocity.y)
+        if speed > maximumMotionVelocity {
+            let scale = maximumMotionVelocity / speed
+            motionVelocity.x *= scale
+            motionVelocity.y *= scale
+        }
+
         var next = current
         next.origin.x += motionVelocity.x * dt
         next.origin.y += motionVelocity.y * dt
@@ -347,33 +350,26 @@ final class AppendSessionPanel {
 
         if hypot(dx, dy) < 0.7, hypot(motionVelocity.x, motionVelocity.y) < 3 {
             motionVelocity = .zero
-            panel.setFrame(target.integral, display: true)
+            panel.setFrame(target, display: false)
             return
         }
 
-        panel.setFrame(next.integral, display: true)
+        panel.setFrame(next, display: false)
     }
 
-    private func panelFrame(cursor: NSPoint, anchor: NSRect?, visibleFrame visible: NSRect) -> NSRect {
+    private func panelFrame(cursor: NSPoint, visibleFrame visible: NSRect) -> NSRect {
         let height: CGFloat = 62
         let horizontalMargin: CGFloat = 24
         let maxWidth = min(460, visible.width - horizontalMargin * 2)
-        let width = max(340, min(maxWidth, anchor.map { $0.width * 0.72 } ?? 410))
+        let width = max(340, min(maxWidth, 410))
         let preferredRightX = cursor.x + 14
         let preferredLeftX = cursor.x - width - 14
         let x = preferredRightX + width <= visible.maxX - horizontalMargin
             ? preferredRightX
             : clamp(preferredLeftX, min: visible.minX + horizontalMargin, max: visible.maxX - width - horizontalMargin)
 
-        if let anchor {
-            let aboveY = anchor.maxY + 10
-            let belowY = anchor.minY - height - 10
-            let y = aboveY + height <= visible.maxY - 8 ? aboveY : max(visible.minY + 18, belowY)
-            return NSRect(x: x, y: y, width: width, height: height)
-        }
-
-        let aboveY = cursor.y + 12
-        let belowY = cursor.y - height - 12
+        let aboveY = cursor.y + 16
+        let belowY = cursor.y - height - 18
         let y = aboveY + height <= visible.maxY - 8 ? aboveY : max(visible.minY + 18, belowY)
         return NSRect(
             x: x,
@@ -399,10 +395,17 @@ final class AppendSessionPanel {
         lastMotionTickAt = Date()
         followTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.countLabel.stringValue = self.countText(for: self.latestSnapshot)
+            self.updateCountLabelIfNeeded()
             self.reposition()
         }
         RunLoop.main.add(followTimer!, forMode: .common)
+    }
+
+    private func updateCountLabelIfNeeded() {
+        let countText = countText(for: latestSnapshot)
+        guard countText != lastCountText else { return }
+        lastCountText = countText
+        countLabel.stringValue = countText
     }
 
     private func stopFollowingScreen() {
