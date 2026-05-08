@@ -27,6 +27,9 @@ final class AppendSessionPanel {
     private var latestAnchorFrame: NSRect?
     private var visibilityGeneration = 0
     private var lastRepositionFrame: NSRect?
+    private var lastAnchorRefreshAt = Date.distantPast
+    private var lastMotionTickAt: Date?
+    private var motionVelocity = CGPoint.zero
 
     private init() {
         panel = NSPanel(
@@ -248,6 +251,8 @@ final class AppendSessionPanel {
             self.panel.alphaValue = 1
             self.panel.contentView?.layer?.transform = CATransform3DIdentity
             self.lastRepositionFrame = nil
+            self.lastMotionTickAt = nil
+            self.motionVelocity = .zero
         }
     }
 
@@ -291,10 +296,15 @@ final class AppendSessionPanel {
         let screen = currentScreen()
         let visible = screen.visibleFrame
         let cursor = NSEvent.mouseLocation
-        latestAnchorFrame = AppendTextInputAnchorLocator.frameNearCursor(cursor)
+        let now = Date()
+        if now.timeIntervalSince(lastAnchorRefreshAt) > 0.22 || latestAnchorFrame == nil {
+            latestAnchorFrame = AppendTextInputAnchorLocator.frameNearCursor(cursor)
+            lastAnchorRefreshAt = now
+        }
 
         let frame = panelFrame(cursor: cursor, anchor: latestAnchorFrame, visibleFrame: visible)
-        if let lastRepositionFrame,
+        if !animated || !panel.isVisible,
+           let lastRepositionFrame,
            abs(lastRepositionFrame.origin.x - frame.origin.x) < 1,
            abs(lastRepositionFrame.origin.y - frame.origin.y) < 1,
            abs(lastRepositionFrame.width - frame.width) < 1,
@@ -305,14 +315,44 @@ final class AppendSessionPanel {
 
         guard animated, panel.isVisible else {
             panel.setFrame(frame.integral, display: true)
+            motionVelocity = .zero
+            lastMotionTickAt = now
             return
         }
 
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.28
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().setFrame(frame.integral, display: true)
+        moveWithSpring(toward: frame, now: now)
+    }
+
+    private func moveWithSpring(toward target: NSRect, now: Date) {
+        let current = panel.frame
+        let dt = min(1.0 / 30.0, max(1.0 / 120.0, now.timeIntervalSince(lastMotionTickAt ?? now)))
+        lastMotionTickAt = now
+
+        let stiffness: CGFloat = 58
+        let damping: CGFloat = 13
+        let dx = target.origin.x - current.origin.x
+        let dy = target.origin.y - current.origin.y
+
+        motionVelocity.x += dx * stiffness * dt
+        motionVelocity.y += dy * stiffness * dt
+        let decay = exp(-damping * dt)
+        motionVelocity.x *= decay
+        motionVelocity.y *= decay
+
+        var next = current
+        next.origin.x += motionVelocity.x * dt
+        next.origin.y += motionVelocity.y * dt
+        let sizeBlend = min(1, dt * 12)
+        next.size.width += (target.width - current.width) * sizeBlend
+        next.size.height += (target.height - current.height) * sizeBlend
+
+        if hypot(dx, dy) < 0.7, hypot(motionVelocity.x, motionVelocity.y) < 3 {
+            motionVelocity = .zero
+            panel.setFrame(target.integral, display: true)
+            return
         }
+
+        panel.setFrame(next.integral, display: true)
     }
 
     private func panelFrame(cursor: NSPoint, anchor: NSRect?, visibleFrame visible: NSRect) -> NSRect {
@@ -357,7 +397,8 @@ final class AppendSessionPanel {
 
     private func startFollowingScreen() {
         guard followTimer == nil else { return }
-        followTimer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: true) { [weak self] _ in
+        lastMotionTickAt = Date()
+        followTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.countLabel.stringValue = self.countText(for: self.latestSnapshot)
             self.reposition()
@@ -368,6 +409,8 @@ final class AppendSessionPanel {
     private func stopFollowingScreen() {
         followTimer?.invalidate()
         followTimer = nil
+        lastMotionTickAt = nil
+        motionVelocity = .zero
     }
 }
 
