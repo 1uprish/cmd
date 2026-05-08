@@ -30,6 +30,8 @@ final class AppendSessionPanel {
     private var lastAnchorRefreshAt = Date.distantPast
     private var lastMotionTickAt: Date?
     private var motionVelocity = CGPoint.zero
+    private let clickySpringResponse: CGFloat = 0.20
+    private let clickySpringDampingFraction: CGFloat = 0.60
 
     private init() {
         panel = NSPanel(
@@ -328,16 +330,13 @@ final class AppendSessionPanel {
         let dt = min(1.0 / 30.0, max(1.0 / 120.0, now.timeIntervalSince(lastMotionTickAt ?? now)))
         lastMotionTickAt = now
 
-        let stiffness: CGFloat = 58
-        let damping: CGFloat = 13
+        let omega = CGFloat.pi / clickySpringResponse
+        let damping = 2 * clickySpringDampingFraction * omega
         let dx = target.origin.x - current.origin.x
         let dy = target.origin.y - current.origin.y
 
-        motionVelocity.x += dx * stiffness * dt
-        motionVelocity.y += dy * stiffness * dt
-        let decay = exp(-damping * dt)
-        motionVelocity.x *= decay
-        motionVelocity.y *= decay
+        motionVelocity.x += (dx * omega * omega - damping * motionVelocity.x) * dt
+        motionVelocity.y += (dy * omega * omega - damping * motionVelocity.y) * dt
 
         var next = current
         next.origin.x += motionVelocity.x * dt
