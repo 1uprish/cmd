@@ -7,7 +7,9 @@ final class AppDiagnosticsMonitor {
     private var timer: DispatchSourceTimer?
     private let queue = DispatchQueue(label: "com.cmd.diagnostics.monitor", qos: .utility)
     private var lastHeartbeat = Date.distantPast
+    private var lastDailySummary = Date.distantPast
     private let heartbeatInterval: TimeInterval = 300
+    private let dailySummaryInterval: TimeInterval = 60 * 60
 
     private init() {}
 
@@ -40,6 +42,11 @@ final class AppDiagnosticsMonitor {
                         "uptimeSeconds": "\(Int(ProcessInfo.processInfo.systemUptime))"
                     ]
                 )
+            }
+
+            if now.timeIntervalSince(self.lastDailySummary) >= self.dailySummaryInterval {
+                self.lastDailySummary = now
+                DiagnosticsLogbook.shared.writeDailyErrorSummary()
             }
         }
         timer.resume()

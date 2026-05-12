@@ -4,6 +4,8 @@ import Foundation
 
 public final class SlotManager: @unchecked Sendable {
 
+    private static let hudEntryLimit = 20
+
     private let store: ClipStore
     private let queue = DispatchQueue(label: "com.cmd.SlotManager", qos: .userInteractive)
     private var _slots: [ClipEntry] = []
@@ -19,6 +21,9 @@ public final class SlotManager: @unchecked Sendable {
             let insertStartedAt = Date()
             try? store.insert(entry)
             let insertMs = Self.milliseconds(since: insertStartedAt)
+            let prewarmEntries = (try? store.recent(limit: Self.hudEntryLimit)) ?? [entry]
+            ClipPasteboardWriter.prewarmDragPayloads(for: prewarmEntries)
+
             let recentStartedAt = Date()
             _slots = (try? store.recent(limit: 5)) ?? _slots
             let recentMs = Self.milliseconds(since: recentStartedAt)

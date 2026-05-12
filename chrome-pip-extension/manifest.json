@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "CMD Browser PiP Spike",
+  "version": "0.1.0",
+  "description": "Reversible CMD spike for DRM-respecting browser Picture-in-Picture.",
+  "permissions": ["activeTab", "scripting"],
+  "host_permissions": [
+    "https://*.youtube.com/*",
+    "https://*.netflix.com/*",
+    "https://*.primevideo.com/*",
+    "https://*.jiocinema.com/*",
+    "https://*.hotstar.com/*",
+    "https://*.disneyplus.com/*"
+  ],
+  "action": {
+    "default_title": "Open CMD Browser PiP"
+  },
+  "background": {
+    "service_worker": "service-worker.js"
+  },
+  "commands": {
+    "toggle-pip": {
+      "suggested_key": {
+        "default": "Alt+P",
+        "mac": "Alt+P"
+      },
+      "description": "Open Browser PiP"
+    }
+  }
+}

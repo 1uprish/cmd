@@ -3,6 +3,7 @@ import Foundation
 
 final class DragPasteboardPayloadCache: @unchecked Sendable {
     static let shared = DragPasteboardPayloadCache()
+    private static let hudPrewarmLimit = 20
 
     private let imagePayloads = NSCache<NSString, ImageDragPayload>()
     private let filePayloads = NSCache<NSString, FileDragPayload>()
@@ -41,7 +42,7 @@ final class DragPasteboardPayloadCache: @unchecked Sendable {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             let batchStartedAt = Date()
-            let entriesToPrewarm = Array(imageEntries.prefix(8))
+            let entriesToPrewarm = Array(imageEntries.prefix(Self.hudPrewarmLimit))
             var succeeded = 0
             var failed = 0
 

@@ -10,6 +10,7 @@ public final class ClipLogSettings: ObservableObject {
     private enum Keys {
         static let holdThresholdMs     = "holdThresholdMs"
         static let retentionDays       = "retentionDays"
+        static let historyDisplayLimit = "historyDisplayLimit"
         static let sensitiveRetentionMinutes = "sensitiveRetentionMinutes"
         static let userExcludedBundles = "userExcludedBundles"
         static let launchAtLogin       = "launchAtLogin"
@@ -20,6 +21,21 @@ public final class ClipLogSettings: ObservableObject {
         static let remoteDiagnosticsEnabled = "remoteDiagnosticsEnabled"
         static let remoteDiagnosticsEndpoint = "remoteDiagnosticsEndpoint"
         static let remoteDiagnosticsToken = "remoteDiagnosticsToken"
+        static let cursorPiPEnabled = "cursorPiPEnabled"
+        static let cursorPiPAutoSuggest = "cursorPiPAutoSuggest"
+        static let cursorPiPFollowCursor = "cursorPiPFollowCursor"
+        static let cursorPiPPinned = "cursorPiPPinned"
+        static let cursorPiPOffsetX = "cursorPiPOffsetX"
+        static let cursorPiPOffsetY = "cursorPiPOffsetY"
+        static let cursorPiPOriginX = "cursorPiPOriginX"
+        static let cursorPiPOriginY = "cursorPiPOriginY"
+        static let cursorPiPWidth = "cursorPiPWidth"
+        static let cursorPiPHeight = "cursorPiPHeight"
+        static let cursorPiPLastURL = "cursorPiPLastURL"
+        static let cursorPiPCornerRadius = "cursorPiPCornerRadius"
+        static let cursorPiPEdgeBlur = "cursorPiPEdgeBlur"
+        static let cursorPiPOpacity = "cursorPiPOpacity"
+        static let cursorPiPChromeVisible = "cursorPiPChromeVisible"
     }
 
     @Published public var holdThresholdMs: Int {
@@ -40,6 +56,20 @@ public final class ClipLogSettings: ObservableObject {
         didSet {
             logSettingChange(name: Keys.retentionDays, oldValue: "\(oldValue)", newValue: "\(retentionDays)")
             UserDefaults.standard.set(retentionDays, forKey: Keys.retentionDays)
+        }
+    }
+
+    @Published public var historyDisplayLimit: Int {
+        didSet {
+            let clamped = [100, 200].contains(historyDisplayLimit) ? historyDisplayLimit : 200
+            logSettingChange(
+                name: Keys.historyDisplayLimit,
+                oldValue: "\(oldValue)",
+                newValue: "\(clamped)",
+                normalized: clamped != historyDisplayLimit
+            )
+            UserDefaults.standard.set(clamped, forKey: Keys.historyDisplayLimit)
+            if clamped != historyDisplayLimit { historyDisplayLimit = clamped }
         }
     }
 
@@ -166,12 +196,125 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
+    @Published public var cursorPiPEnabled: Bool {
+        didSet {
+            logSettingChange(name: Keys.cursorPiPEnabled, oldValue: "\(oldValue)", newValue: "\(cursorPiPEnabled)")
+            UserDefaults.standard.set(cursorPiPEnabled, forKey: Keys.cursorPiPEnabled)
+        }
+    }
+
+    @Published public var cursorPiPAutoSuggest: Bool {
+        didSet {
+            logSettingChange(name: Keys.cursorPiPAutoSuggest, oldValue: "\(oldValue)", newValue: "\(cursorPiPAutoSuggest)")
+            UserDefaults.standard.set(cursorPiPAutoSuggest, forKey: Keys.cursorPiPAutoSuggest)
+        }
+    }
+
+    @Published public var cursorPiPFollowCursor: Bool {
+        didSet {
+            logSettingChange(name: Keys.cursorPiPFollowCursor, oldValue: "\(oldValue)", newValue: "\(cursorPiPFollowCursor)")
+            UserDefaults.standard.set(cursorPiPFollowCursor, forKey: Keys.cursorPiPFollowCursor)
+        }
+    }
+
+    @Published public var cursorPiPPinned: Bool {
+        didSet {
+            logSettingChange(name: Keys.cursorPiPPinned, oldValue: "\(oldValue)", newValue: "\(cursorPiPPinned)")
+            UserDefaults.standard.set(cursorPiPPinned, forKey: Keys.cursorPiPPinned)
+        }
+    }
+
+    @Published public var cursorPiPOffsetX: Double {
+        didSet {
+            let clamped = cursorPiPOffsetX.clamped(to: -480...480)
+            logSettingChange(name: Keys.cursorPiPOffsetX, oldValue: "\(oldValue)", newValue: "\(clamped)", normalized: clamped != cursorPiPOffsetX)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOffsetX)
+            if clamped != cursorPiPOffsetX { cursorPiPOffsetX = clamped }
+        }
+    }
+
+    @Published public var cursorPiPOffsetY: Double {
+        didSet {
+            let clamped = cursorPiPOffsetY.clamped(to: -480...480)
+            logSettingChange(name: Keys.cursorPiPOffsetY, oldValue: "\(oldValue)", newValue: "\(clamped)", normalized: clamped != cursorPiPOffsetY)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOffsetY)
+            if clamped != cursorPiPOffsetY { cursorPiPOffsetY = clamped }
+        }
+    }
+
+    @Published public var cursorPiPOriginX: Double {
+        didSet { UserDefaults.standard.set(cursorPiPOriginX, forKey: Keys.cursorPiPOriginX) }
+    }
+
+    @Published public var cursorPiPOriginY: Double {
+        didSet { UserDefaults.standard.set(cursorPiPOriginY, forKey: Keys.cursorPiPOriginY) }
+    }
+
+    @Published public var cursorPiPWidth: Double {
+        didSet {
+            let clamped = cursorPiPWidth.clamped(to: 100...1280)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPWidth)
+            if clamped != cursorPiPWidth { cursorPiPWidth = clamped }
+        }
+    }
+
+    @Published public var cursorPiPHeight: Double {
+        didSet {
+            let clamped = cursorPiPHeight.clamped(to: 56...720)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPHeight)
+            if clamped != cursorPiPHeight { cursorPiPHeight = clamped }
+        }
+    }
+
+    @Published public var cursorPiPLastURL: String {
+        didSet {
+            logSettingChange(
+                name: Keys.cursorPiPLastURL,
+                oldValue: oldValue.isEmpty ? "empty" : "present",
+                newValue: cursorPiPLastURL.isEmpty ? "empty" : "present",
+                extra: ["valueKind": "presence"]
+            )
+            UserDefaults.standard.set(cursorPiPLastURL, forKey: Keys.cursorPiPLastURL)
+        }
+    }
+
+    @Published public var cursorPiPCornerRadius: Double {
+        didSet {
+            let clamped = cursorPiPCornerRadius.clamped(to: 0...140)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPCornerRadius)
+            if clamped != cursorPiPCornerRadius { cursorPiPCornerRadius = clamped }
+        }
+    }
+
+    @Published public var cursorPiPEdgeBlur: Double {
+        didSet {
+            let clamped = cursorPiPEdgeBlur.clamped(to: 0...48)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPEdgeBlur)
+            if clamped != cursorPiPEdgeBlur { cursorPiPEdgeBlur = clamped }
+        }
+    }
+
+    @Published public var cursorPiPOpacity: Double {
+        didSet {
+            let clamped = cursorPiPOpacity.clamped(to: 0.55...1.0)
+            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOpacity)
+            if clamped != cursorPiPOpacity { cursorPiPOpacity = clamped }
+        }
+    }
+
+    @Published public var cursorPiPChromeVisible: Bool {
+        didSet {
+            UserDefaults.standard.set(cursorPiPChromeVisible, forKey: Keys.cursorPiPChromeVisible)
+        }
+    }
+
     private init() {
         let defaults = UserDefaults.standard
 
         defaults.register(defaults: [
             Keys.holdThresholdMs:     160,
             Keys.retentionDays:       30,
+            Keys.historyDisplayLimit:  200,
             Keys.sensitiveRetentionMinutes: 60,
             Keys.userExcludedBundles: [String](),
             Keys.launchAtLogin:       false,
@@ -182,10 +325,26 @@ public final class ClipLogSettings: ObservableObject {
             Keys.remoteDiagnosticsEnabled: false,
             Keys.remoteDiagnosticsEndpoint: "",
             Keys.remoteDiagnosticsToken: "",
+            Keys.cursorPiPEnabled: true,
+            Keys.cursorPiPAutoSuggest: true,
+            Keys.cursorPiPFollowCursor: false,
+            Keys.cursorPiPPinned: true,
+            Keys.cursorPiPOffsetX: 24.0,
+            Keys.cursorPiPOffsetY: -24.0,
+            Keys.cursorPiPOriginX: 0.0,
+            Keys.cursorPiPOriginY: 0.0,
+            Keys.cursorPiPWidth: 480.0,
+            Keys.cursorPiPHeight: 270.0,
+            Keys.cursorPiPLastURL: "",
+            Keys.cursorPiPCornerRadius: 22.0,
+            Keys.cursorPiPEdgeBlur: 8.0,
+            Keys.cursorPiPOpacity: 1.0,
+            Keys.cursorPiPChromeVisible: true,
         ])
 
         holdThresholdMs     = defaults.integer(forKey: Keys.holdThresholdMs)
         retentionDays       = defaults.integer(forKey: Keys.retentionDays)
+        historyDisplayLimit = defaults.integer(forKey: Keys.historyDisplayLimit)
         sensitiveRetentionMinutes = defaults.integer(forKey: Keys.sensitiveRetentionMinutes)
         userExcludedBundles = defaults.stringArray(forKey: Keys.userExcludedBundles) ?? []
         launchAtLogin       = defaults.bool(forKey: Keys.launchAtLogin)
@@ -196,6 +355,21 @@ public final class ClipLogSettings: ObservableObject {
         remoteDiagnosticsEnabled = defaults.bool(forKey: Keys.remoteDiagnosticsEnabled)
         remoteDiagnosticsEndpoint = defaults.string(forKey: Keys.remoteDiagnosticsEndpoint) ?? ""
         remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
+        cursorPiPEnabled = defaults.bool(forKey: Keys.cursorPiPEnabled)
+        cursorPiPAutoSuggest = defaults.bool(forKey: Keys.cursorPiPAutoSuggest)
+        cursorPiPFollowCursor = defaults.bool(forKey: Keys.cursorPiPFollowCursor)
+        cursorPiPPinned = defaults.bool(forKey: Keys.cursorPiPPinned)
+        cursorPiPOffsetX = defaults.double(forKey: Keys.cursorPiPOffsetX)
+        cursorPiPOffsetY = defaults.double(forKey: Keys.cursorPiPOffsetY)
+        cursorPiPOriginX = defaults.double(forKey: Keys.cursorPiPOriginX)
+        cursorPiPOriginY = defaults.double(forKey: Keys.cursorPiPOriginY)
+        cursorPiPWidth = defaults.double(forKey: Keys.cursorPiPWidth)
+        cursorPiPHeight = defaults.double(forKey: Keys.cursorPiPHeight)
+        cursorPiPLastURL = defaults.string(forKey: Keys.cursorPiPLastURL) ?? ""
+        cursorPiPCornerRadius = defaults.double(forKey: Keys.cursorPiPCornerRadius)
+        cursorPiPEdgeBlur = defaults.double(forKey: Keys.cursorPiPEdgeBlur)
+        cursorPiPOpacity = defaults.double(forKey: Keys.cursorPiPOpacity)
+        cursorPiPChromeVisible = defaults.bool(forKey: Keys.cursorPiPChromeVisible)
     }
 
     private func logSettingChange(

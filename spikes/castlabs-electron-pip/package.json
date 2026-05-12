@@ -1,0 +1,15 @@
+{
+  "name": "cmd-castlabs-electron-pip-spike",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Reversible OTT mini-browser spike for CMD.",
+  "main": "app/main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:youtube": "electron . https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    "start:url": "electron . --url"
+  },
+  "dependencies": {
+    "electron": "github:castlabs/electron-releases#v42.0.0+wvcus"
+  }
+}

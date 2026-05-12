@@ -1,6 +1,7 @@
 import SwiftUI
 import AppKit
 import UniformTypeIdentifiers
+import ClipLogCore
 
 public struct SettingsView: View {
 
@@ -18,6 +19,7 @@ public struct SettingsView: View {
             VStack(alignment: .leading, spacing: 16) {
                 triggerCard
                 appearanceCard
+                cursorPiPCard
                 privacyCard
                 storageCard
                 diagnosticsCard
@@ -277,6 +279,127 @@ public struct SettingsView: View {
         .frame(height: 258 * CGFloat(settings.hudSizeScale))
     }
 
+    // MARK: - CursorPiP Beta
+
+    private var cursorPiPCard: some View {
+        card("CursorPiP Beta", icon: "pip.fill", color: .secondary) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Enable CursorPiP")
+                        .font(.body)
+                    Text("YouTube first. CMD stays clipboard-first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.cursorPiPEnabled },
+                    set: { settings.cursorPiPEnabled = $0 }
+                ))
+                .labelsHidden()
+            }
+
+            Toggle("Suggest PiP after copying YouTube links", isOn: Binding(
+                get: { settings.cursorPiPAutoSuggest },
+                set: { settings.cursorPiPAutoSuggest = $0 }
+            ))
+            .disabled(!settings.cursorPiPEnabled)
+
+            HStack {
+                Toggle("Pinned", isOn: Binding(
+                    get: { settings.cursorPiPPinned },
+                    set: { settings.cursorPiPPinned = $0 }
+                ))
+                .disabled(!settings.cursorPiPEnabled)
+            }
+
+            Divider()
+
+            row(label: "Offset X") {
+                Text("\(Int(settings.cursorPiPOffsetX)) px")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { settings.cursorPiPOffsetX },
+                set: { settings.cursorPiPOffsetX = $0 }
+            ), in: -240...240, step: 4)
+            .disabled(!settings.cursorPiPEnabled)
+
+            row(label: "Offset Y") {
+                Text("\(Int(settings.cursorPiPOffsetY)) px")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { settings.cursorPiPOffsetY },
+                set: { settings.cursorPiPOffsetY = $0 }
+            ), in: -240...240, step: 4)
+            .disabled(!settings.cursorPiPEnabled)
+
+            HStack {
+                Button("Small") {
+                    applyCursorPiPSize(.small)
+                }
+                Button("Medium") {
+                    applyCursorPiPSize(.medium)
+                }
+                Button("Large") {
+                    applyCursorPiPSize(.large)
+                }
+            }
+            .disabled(!settings.cursorPiPEnabled)
+
+            Divider()
+
+            Toggle("Show hover controls", isOn: Binding(
+                get: { settings.cursorPiPChromeVisible },
+                set: { settings.cursorPiPChromeVisible = $0 }
+            ))
+            .disabled(!settings.cursorPiPEnabled)
+
+            row(label: "Corner radius") {
+                Text("\(Int(settings.cursorPiPCornerRadius)) px")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { settings.cursorPiPCornerRadius },
+                set: { settings.cursorPiPCornerRadius = $0 }
+            ), in: 0...140, step: 1)
+            .disabled(!settings.cursorPiPEnabled)
+
+            row(label: "Edge blend") {
+                Text("\(Int(settings.cursorPiPEdgeBlur)) px")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { settings.cursorPiPEdgeBlur },
+                set: { settings.cursorPiPEdgeBlur = $0 }
+            ), in: 0...48, step: 1)
+            .disabled(!settings.cursorPiPEnabled)
+
+            row(label: "Panel opacity") {
+                Text("\(Int(settings.cursorPiPOpacity * 100))%")
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(.primary)
+                    .frame(width: 70, alignment: .trailing)
+            }
+            Slider(value: Binding(
+                get: { settings.cursorPiPOpacity },
+                set: { settings.cursorPiPOpacity = $0 }
+            ), in: 0.55...1.0, step: 0.05)
+            .disabled(!settings.cursorPiPEnabled)
+
+            note("YouTube and open-web video use the native CMD panel. OTT services use Chrome PiP where DRM requires it.")
+        }
+    }
+
     // MARK: - Privacy
 
     private var privacyCard: some View {
@@ -359,6 +482,20 @@ public struct SettingsView: View {
                     Text("30 days").tag(30)
                     Text("90 days").tag(90)
                     Text("Forever").tag(0)
+                }
+                .labelsHidden()
+                .fixedSize()
+            }
+
+            Divider()
+
+            row(label: "Show in history window") {
+                Picker("History window limit", selection: Binding(
+                    get: { settings.historyDisplayLimit },
+                    set: { settings.historyDisplayLimit = $0 }
+                )) {
+                    Text("100 items").tag(100)
+                    Text("200 items").tag(200)
                 }
                 .labelsHidden()
                 .fixedSize()
@@ -461,6 +598,11 @@ public struct SettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func applyCursorPiPSize(_ preset: CursorPiPSizePreset) {
+        settings.cursorPiPWidth = Double(preset.size.width)
+        settings.cursorPiPHeight = Double(preset.size.height)
     }
 
     // MARK: - App picker

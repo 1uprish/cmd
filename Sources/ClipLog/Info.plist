@@ -26,6 +26,8 @@
     <string>NSApplication</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>CMD needs Accessibility access to intercept ⌘V and show clipboard history.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>CMD needs permission to pause matching browser video when opening CursorPiP.</string>
     <key>NSHumanReadableCopyright</key>
     <string>Copyright © 2026 CMD. All rights reserved.</string>
     <key>NSPrivacyAccessedAPITypes</key>

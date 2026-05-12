@@ -40,6 +40,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     public var onHUDEscape: ((UInt64) -> Void)?
     public var onHUDMoveSelection: ((Int) -> Void)?
     public var onHUDConfirmSelection: ((UInt64) -> Void)?
+    public var onHUDCopySelection: (() -> Void)?
     public var onHUDCharFilter: ((Character) -> Void)?
     public var onHUDBackspace: (() -> Void)?
 
@@ -57,9 +58,47 @@ public final class ClipLogEventTap: @unchecked Sendable {
         }
     }
 
+    public func diagnosticsSnapshot() -> [String: String] {
+        tapQueue.sync {
+            [
+                "eventTapState": stateDescription,
+                "eventTapInstalled": "\(tap != nil)",
+                "eventTapEnabled": tap.map { "\(CGEvent.tapIsEnabled(tap: $0))" } ?? "false",
+                "tapRunLoopPresent": "\(tapRunLoop != nil)",
+                "commandKeyIsDown": "\(commandKeyIsDown)",
+                "commandTapClean": "\(commandTapClean)",
+                "appendSessionActive": "\(appendSessionActive)",
+                "hudDragActive": "\(hudDragActive)",
+                "hudDragWatchdogActive": "\(hudDragWatchdog != nil)",
+                "holdThresholdMs": "\(Int(holdThreshold * 1000))",
+                "nextSessionID": "\(nextSessionID)",
+                "hudActiveAgeMs": hudActivatedAt.map { "\(Int(Date().timeIntervalSince($0) * 1000))" } ?? "none"
+            ]
+        }
+    }
+
     public func setAppendSessionActive(_ active: Bool) {
         tapQueue.async {
             self.appendSessionActive = active
+        }
+    }
+
+    public func hudDragDidBegin() {
+        tapQueue.async {
+            if case .pendingHold(_, let timer, _, _) = self.state {
+                timer.cancel()
+                self.enterIdle()
+            }
+            self.hudDragActive = true
+            self.scheduleHUDDragWatchdog()
+        }
+    }
+
+    public func hudDragDidEnd() {
+        tapQueue.async {
+            self.hudDragWatchdog?.cancel()
+            self.hudDragWatchdog = nil
+            self.hudDragActive = false
         }
     }
 
@@ -81,7 +120,12 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private var commandKeyIsDown = false
     private var commandTapClean = false
     private var appendSessionActive = false
+    private var hudDragActive = false
+    private var hudDragWatchdog: DispatchSourceTimer?
     private let appendGestureInterval: TimeInterval = 0.65
+    private let hudDragWatchdogDelay: TimeInterval = 4.0
+    private let hudVisibilityGracePeriod: TimeInterval = 1.0
+    private var hudActivatedAt: Date?
 
     // State machine
     private enum State {
@@ -91,6 +135,16 @@ public final class ClipLogEventTap: @unchecked Sendable {
     }
     private var state: State = .idle
     private var nextSessionID: UInt64 = 0
+
+    private func enterIdle() {
+        state = .idle
+        hudActivatedAt = nil
+    }
+
+    private func enterHUDActive(sessionID: UInt64) {
+        state = .hudActive(sessionID: sessionID)
+        hudActivatedAt = Date()
+    }
 
     public func hudDidShowExternally(sessionID: UInt64) {
         tapQueue.async { [weak self] in
@@ -103,7 +157,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
             if case .pendingHold(_, let timer, _, _) = self.state {
                 timer.cancel()
             }
-            self.state = .hudActive(sessionID: sessionID)
+            self.enterHUDActive(sessionID: sessionID)
             self.commandTapClean = false
             self.lastCommandTapTime = nil
             DiagnosticsLogbook.shared.actionOutput(
@@ -182,10 +236,13 @@ public final class ClipLogEventTap: @unchecked Sendable {
             if case .pendingHold(_, let timer, _, _) = state {
                 timer.cancel()
             }
-            state = .idle
+            enterIdle()
             commandKeyIsDown = false
             commandTapClean = false
             lastCommandTapTime = nil
+            hudDragActive = false
+            hudDragWatchdog?.cancel()
+            hudDragWatchdog = nil
         }
         tap.map { CGEvent.tapEnable(tap: $0, enable: false) }
         tapRunLoop.map { CFRunLoopStop($0) }
@@ -254,7 +311,34 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     // MARK: - State machine
 
+    private func scheduleHUDDragWatchdog() {
+        hudDragWatchdog?.cancel()
+        let timer = DispatchSource.makeTimerSource(queue: tapQueue)
+        timer.schedule(deadline: .now() + hudDragWatchdogDelay)
+        timer.setEventHandler { [weak self] in
+            guard let self, self.hudDragActive else { return }
+            self.hudDragActive = false
+            self.hudDragWatchdog = nil
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "hud_drag_watchdog",
+                details: ["success": "true", "result": "drag_state_reset"]
+            )
+        }
+        hudDragWatchdog = timer
+        timer.resume()
+    }
+
     private func handleCommandVDown(event: CGEvent) -> CGEvent? {
+        if hudDragActive {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_down",
+                details: ["success": "true", "result": "drag_active_suppressed"]
+            )
+            return nil
+        }
+
         switch state {
         case .idle:
             let sessionID = makeSessionID()
@@ -317,11 +401,20 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     private func handleCommandVUp(event: CGEvent) -> CGEvent? {
         DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "command_v_up")
+        if hudDragActive {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_v_up",
+                details: ["success": "true", "result": "drag_active_suppressed"]
+            )
+            return nil
+        }
+
         switch state {
         case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
             // Released before hold threshold — deliver the paste we owe.
             timer.cancel()
-            state = .idle
+            enterIdle()
             DiagnosticsLogbook.shared.record(
                 "command_v_short_release",
                 category: "event_tap",
@@ -371,6 +464,15 @@ public final class ClipLogEventTap: @unchecked Sendable {
     }
 
     private func handleCommandRelease() {
+        if hudDragActive {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "event_tap",
+                action: "command_release",
+                details: ["success": "true", "result": "drag_active_suppressed"]
+            )
+            return
+        }
+
         switch state {
         case .pendingHold(let sessionID, let timer, let queuedPaste, let startedAt):
             DiagnosticsLogbook.shared.actionInput(
@@ -380,7 +482,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
             )
             // ⌘ released before the hold threshold — deliver the paste we suppressed.
             timer.cancel()
-            state = .idle
+            enterIdle()
             DiagnosticsLogbook.shared.record(
                 "command_v_command_release",
                 category: "event_tap",
@@ -434,7 +536,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
         // Events leaked while tap was disabled — the app already received
         // them, so we must not synthesise again.
         if case .pendingHold(_, let timer, _, _) = state { timer.cancel() }
-        state = .idle
+        enterIdle()
     }
 
     // MARK: - Hold timer
@@ -446,7 +548,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
             guard let self else { return }
             guard case .pendingHold(let activeSessionID, _, let queuedPaste, let startedAt) = self.state,
                   activeSessionID == sessionID else { return }
-            self.state = .hudActive(sessionID: sessionID)
+            self.enterHUDActive(sessionID: sessionID)
             DiagnosticsLogbook.shared.record(
                 "hud_hold_triggered",
                 category: "event_tap",
@@ -473,8 +575,36 @@ public final class ClipLogEventTap: @unchecked Sendable {
               let check = isHUDActuallyVisible,
               !check()
         else { return false }
-        state = .idle
+        let activeAge = hudActivatedAt.map { Date().timeIntervalSince($0) } ?? .infinity
+        guard activeAge >= hudVisibilityGracePeriod else { return false }
+        let details = [
+            "state": stateDescription,
+            "ageMs": "\(Int(activeAge * 1000))",
+            "graceMs": "\(Int(hudVisibilityGracePeriod * 1000))"
+        ]
+        DiagnosticsLogbook.shared.record(
+            "hud_visibility_invariant_failed",
+            category: "hud",
+            details: details
+        )
+        DiagnosticsLogbook.shared.record(
+            "hud_stale_state_recovered",
+            category: "event_tap",
+            details: details
+        )
+        enterIdle()
         return true
+    }
+
+    private var stateDescription: String {
+        switch state {
+        case .idle:
+            return "idle"
+        case .pendingHold(let sessionID, _, let queuedPaste, let startedAt):
+            return "pendingHold(sessionID:\(sessionID),queuedPaste:\(queuedPaste),heldMs:\(Int(Date().timeIntervalSince(startedAt) * 1000)))"
+        case .hudActive(let sessionID):
+            return "hudActive(sessionID:\(sessionID))"
+        }
     }
 
     private var isIdle: Bool {
@@ -605,6 +735,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private static let kVK_KeypadEnter: Int64 = 76
     private static let kVK_UpArrow: Int64 = 126
     private static let kVK_DownArrow: Int64 = 125
+    private static let kVK_C: Int64 = 8
     private static let blockedCommandLetterKeys: Set<Int64> = [
         12, // Q
         13, // W
@@ -654,6 +785,14 @@ public final class ClipLogEventTap: @unchecked Sendable {
             return nil
         }
 
+        // Cmd-C → copy the current HUD selection, including multi-select.
+        if exactCommand, vk == Self.kVK_C {
+            DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_copy_selection", details: ["sessionID": "\(sessionID)"])
+            DispatchQueue.main.async { self.onHUDCopySelection?() }
+            DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_copy_selection", details: ["success": "true"])
+            return nil
+        }
+
         // The HUD no longer exposes command-key slot shortcuts. While it is open,
         // suppress exact command-letter chords so they do not quit/close the
         // foreground app behind the non-activating panel.
@@ -691,7 +830,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
                   activeSessionID == sessionID
             else { return }
             DiagnosticsLogbook.shared.actionInput(feature: "event_tap", action: "hud_did_dismiss", details: ["sessionID": "\(sessionID)"])
-            self.state = .idle
+            self.enterIdle()
             self.commandTapClean = false
             self.lastCommandTapTime = nil
             DiagnosticsLogbook.shared.actionOutput(feature: "event_tap", action: "hud_did_dismiss", details: ["success": "true"])

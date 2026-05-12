@@ -16,6 +16,8 @@ public final class HUDPanel {
     public weak var slotManager: SlotManager?
     public var onDismiss: ((UInt64) -> Void)?
     public var onRestoreAfterCancelledDrag: ((UInt64) -> Void)?
+    public var onDragStart: (() -> Void)?
+    public var onDragEnd: (() -> Void)?
 
     private enum Layout {
         static let fallbackWidth: CGFloat = 520
@@ -162,6 +164,7 @@ public final class HUDPanel {
     private var currentTransitionStyle = TransitionStyle.magnetic
     private var animationGeneration: UInt64 = 0
     private var dragRestoreSnapshot: DragRestoreSnapshot?
+    private var lastStackDragPrewarmSignature: String?
 
     private let visibilityLock = NSLock()
     private var _isVisible = false
@@ -169,6 +172,26 @@ public final class HUDPanel {
 
     public var isVisible: Bool {
         visibilityLock.withLock { _isVisible }
+    }
+
+    public var isPanelActuallyVisible: Bool {
+        let snapshot = panelVisibilitySnapshot()
+        return snapshot["panelVisible"] == "true"
+            && snapshot["panelOnActiveSpace"] == "true"
+            && (Double(snapshot["panelAlpha"] ?? "0") ?? 0) > 0.05
+    }
+
+    public func diagnosticsSnapshot(reason: String? = nil) -> [String: String] {
+        var snapshot = panelVisibilitySnapshot()
+        snapshot["logicalVisible"] = "\(isVisible)"
+        snapshot["activeSessionID"] = visibilityLock.withLock { activeSessionID.map(String.init) ?? "none" }
+        snapshot["slotCount"] = "\(currentSlots.count)"
+        snapshot["filterLength"] = "\(filterText.count)"
+        snapshot["selectedDisplayIndex"] = selectedDisplayIndex.map(String.init) ?? "none"
+        snapshot["multiSelectedCount"] = "\(multiSelectedOriginalIndices.count)"
+        snapshot["hasDragRestoreSnapshot"] = "\(dragRestoreSnapshot != nil)"
+        if let reason { snapshot["reason"] = reason }
+        return snapshot
     }
 
     private var clickMonitor: Any?
@@ -198,7 +221,7 @@ public final class HUDPanel {
         panel.backgroundColor = .clear
         panel.hasShadow = false
         panel.hidesOnDeactivate = false
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+        panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
         panel.contentView = rootView
 
         rootView.wantsLayer = true
@@ -295,6 +318,7 @@ public final class HUDPanel {
         resetRootLayer()
 
         currentSlots = Array(slots.prefix(Layout.maxEntries))
+        ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
         selectedDisplayIndex = currentSlots.isEmpty ? nil : 0
         multiSelectedOriginalIndices = []
@@ -565,6 +589,35 @@ public final class HUDPanel {
                 "selectedCount": "\(entries.count)",
                 "durationMs": "\(Self.milliseconds(since: startedAt))"
             ]
+        )
+    }
+
+    public func copySelection() {
+        guard Thread.isMainThread else {
+            DispatchQueue.main.async { self.copySelection() }
+            return
+        }
+
+        let entries = entriesForCurrentSelection()
+        DiagnosticsLogbook.shared.actionInput(
+            feature: "hud",
+            action: "copy_selection",
+            details: ["selectedCount": "\(entries.count)"]
+        )
+        guard !entries.isEmpty else {
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "copy_selection",
+                details: ["success": "false", "reason": "empty_selection"]
+            )
+            return
+        }
+        slotManager?.copy(entries: entries)
+        HUDHaptics.copied()
+        DiagnosticsLogbook.shared.actionOutput(
+            feature: "hud",
+            action: "copy_selection",
+            details: ["success": "true", "selectedCount": "\(entries.count)"]
         )
     }
 
@@ -849,9 +902,11 @@ public final class HUDPanel {
                 self?.entriesForAction(fallbackOriginalIndex: selectedIndex) ?? []
             }
             row.onDragStart = { [weak self] in
+                self?.onDragStart?()
                 self?.dismissForDrag()
             }
             row.onDragEnd = { [weak self] operation in
+                self?.onDragEnd?()
                 if operation.isEmpty {
                     self?.restoreAfterCancelledDrag()
                 } else {
@@ -923,14 +978,25 @@ public final class HUDPanel {
                 .filter { selectedOriginalIndices.contains($0) }
                 .compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
             : []
+        let selectedSignature = selectedEntries.count > 1
+            ? Self.stackDragSignature(for: selectedEntries)
+            : nil
         for row in rowViews {
             let originalIndex = row.originalIndex
             let isSelected = originalIndex.map { selectedOriginalIndices.contains($0) } ?? false
             row.setSelected(isSelected)
-            row.updateStackDragCache(entries: isSelected ? selectedEntries : [])
+            row.updateStackDragCache(
+                entries: isSelected ? selectedEntries : [],
+                signature: isSelected ? selectedSignature : nil
+            )
         }
         updateSelectionBadge(count: selectedOriginalIndices.count)
-        if !selectedEntries.isEmpty {
+        guard let selectedSignature else {
+            lastStackDragPrewarmSignature = nil
+            return
+        }
+        if selectedSignature != lastStackDragPrewarmSignature {
+            lastStackDragPrewarmSignature = selectedSignature
             ClipPasteboardWriter.prewarmDragPayloads(for: selectedEntries)
         }
     }
@@ -960,6 +1026,10 @@ public final class HUDPanel {
 
     private static func milliseconds(since start: Date) -> Int {
         Int(Date().timeIntervalSince(start) * 1000)
+    }
+
+    private static func stackDragSignature(for entries: [ClipEntry]) -> String {
+        entries.map { "\($0.id.uuidString):\($0.contentHash)" }.joined(separator: "|")
     }
 
     private func clearDragRestoreSnapshot() {
@@ -1026,6 +1096,13 @@ public final class HUDPanel {
         }
 
         return visibleIndices
+            .filter { selectedOriginalIndices.contains($0) }
+            .compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
+    }
+
+    private func entriesForCurrentSelection() -> [ClipEntry] {
+        let selectedOriginalIndices = selectionOriginalIndicesForDisplay()
+        return displayedIndices()
             .filter { selectedOriginalIndices.contains($0) }
             .compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil }
     }
@@ -1545,6 +1622,23 @@ public final class HUDPanel {
         }
     }
 
+    private func panelVisibilitySnapshot() -> [String: String] {
+        let read = {
+            [
+                "panelVisible": "\(self.panel.isVisible)",
+                "panelOnActiveSpace": "\(self.panel.isOnActiveSpace)",
+                "panelAlpha": String(format: "%.2f", Double(self.panel.alphaValue)),
+                "panelWindowNumber": "\(self.panel.windowNumber)",
+                "panelFrame": NSStringFromRect(self.panel.frame),
+                "panelOrderedIndex": "\(self.panel.orderedIndex)"
+            ]
+        }
+        if Thread.isMainThread {
+            return read()
+        }
+        return DispatchQueue.main.sync(execute: read)
+    }
+
     private func beginDismiss(sessionID requestedSessionID: UInt64?) -> UInt64? {
         visibilityLock.withLock {
             guard _isVisible, let currentSessionID = activeSessionID else { return nil }
@@ -1793,6 +1887,29 @@ private final class HUDRowsDocumentView: NSView {
     override var isFlipped: Bool { true }
 }
 
+private final class HUDStackDragPayloadStore {
+    static let shared = HUDStackDragPayloadStore()
+
+    private var signature: String?
+    private var writers: [NSPasteboardWriting] = []
+    private var image: NSImage?
+
+    func payload(
+        signature: String,
+        entries: [ClipEntry],
+        imageBuilder: () -> NSImage
+    ) -> (writers: [NSPasteboardWriting], image: NSImage?) {
+        if signature == self.signature {
+            return (writers, image)
+        }
+
+        self.signature = signature
+        writers = ClipPasteboardWriter.dragPasteboardWriters(for: entries)
+        image = imageBuilder()
+        return (writers, image)
+    }
+}
+
 private final class HUDRowView: NSView {
 
     var onPaste: ((Int) -> Void)?
@@ -2024,7 +2141,7 @@ private final class HUDRowView: NSView {
         if dragEntries.count > 1 {
             let signature = stackSignature(for: dragEntries)
             if signature != cachedStackSignature {
-                updateStackDragCache(entries: dragEntries)
+                updateStackDragCache(entries: dragEntries, signature: signature)
             }
             writers = cachedStackDragWriters
             image = cachedStackDragImage
@@ -2196,16 +2313,16 @@ private final class HUDRowView: NSView {
     private func buildDragCache(for entry: ClipEntry) {
         cachedDragWriters = pasteboardWriters(for: entry)
         cachedDragImage = lightweightDragImage(for: entry)
-        updateStackDragCache(entries: [])
+        updateStackDragCache(entries: [], signature: nil)
     }
 
     private func clearDragCache() {
         cachedDragImage = nil
         cachedDragWriters = []
-        updateStackDragCache(entries: [])
+        updateStackDragCache(entries: [], signature: nil)
     }
 
-    func updateStackDragCache(entries: [ClipEntry]) {
+    func updateStackDragCache(entries: [ClipEntry], signature: String?) {
         guard entries.count > 1 else {
             cachedStackDragImage = nil
             cachedStackDragWriters = []
@@ -2213,12 +2330,18 @@ private final class HUDRowView: NSView {
             return
         }
 
-        let signature = stackSignature(for: entries)
+        let signature = signature ?? stackSignature(for: entries)
         guard signature != cachedStackSignature else { return }
         cachedStackSignature = signature
-        cachedStackDragWriters = ClipPasteboardWriter.dragPasteboardWriters(for: entries)
-        cachedStackDragImage = lightweightStackDragImage(for: entries)
-        ClipPasteboardWriter.prewarmDragPayloads(for: entries)
+        let payload = HUDStackDragPayloadStore.shared.payload(
+            signature: signature,
+            entries: entries,
+            imageBuilder: { [weak self] in
+                self?.lightweightStackDragImage(for: entries) ?? NSImage(size: Self.ghostSize)
+            }
+        )
+        cachedStackDragWriters = payload.writers
+        cachedStackDragImage = payload.image
     }
 
     private static let ghostSize = NSSize(width: 360, height: 68)

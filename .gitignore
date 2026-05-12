@@ -35,6 +35,9 @@ notarization-*.json
 .cursor/
 .vscode/
 .idea/
+.codex-spikes/
+memory/
+node_modules/
 
 # Logs and diagnostics
 *.log

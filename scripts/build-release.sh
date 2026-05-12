@@ -36,6 +36,8 @@ BINARY_SRC=""
 SWIFT_PRODUCTS_DIR="$REPO_ROOT/.build"
 INFO_PLIST_SRC="$REPO_ROOT/Sources/ClipLog/Info.plist"
 ENTITLEMENTS_SRC="$REPO_ROOT/Sources/ClipLog/Resources/cmd.entitlements"
+ELECTRON_ENTITLEMENTS_SRC="$REPO_ROOT/Sources/ClipLog/Resources/ott-pip-electron.entitlements"
+ELECTRON_HELPER_ENTITLEMENTS_SRC="$REPO_ROOT/Sources/ClipLog/Resources/ott-pip-electron-helper.entitlements"
 PRIVACY_SRC="$REPO_ROOT/Sources/ClipLog/Resources/PrivacyInfo.xcprivacy"
 
 resolve_signing_identity() {
@@ -103,6 +105,53 @@ find_release_binary() {
     fi
 }
 
+sign_code() {
+    local entitlements="$1"
+    shift
+
+    local args=(
+        --force
+        --sign "$SIGNING_IDENTITY"
+        --options runtime
+        --generate-entitlement-der
+    )
+    if [[ -n "$entitlements" ]]; then
+        args+=(--entitlements "$entitlements")
+    fi
+    if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+        args+=(--timestamp)
+    fi
+
+    codesign "${args[@]}" "$@"
+}
+
+sign_ott_pip_helper() {
+    local electron_app="$RESOURCES_DIR/OTTPiP/node_modules/electron/dist/Electron.app"
+    local frameworks_dir="$electron_app/Contents/Frameworks"
+
+    if [[ ! -d "$electron_app" ]]; then
+        return
+    fi
+
+    echo "    Signing OTTPiP Electron helper..."
+    find "$frameworks_dir" -type f \( -name "*.dylib" -o -perm -111 \) -print0 |
+        while IFS= read -r -d '' item; do
+            sign_code "" "$item"
+        done
+
+    find "$frameworks_dir" -type d -name "*.framework" -prune -print0 |
+        while IFS= read -r -d '' framework; do
+            sign_code "" "$framework"
+        done
+
+    find "$frameworks_dir" -maxdepth 1 -type d -name "Electron Helper*.app" -print0 |
+        while IFS= read -r -d '' helper_app; do
+            sign_code "$ELECTRON_HELPER_ENTITLEMENTS_SRC" "$helper_app"
+        done
+
+    sign_code "$ELECTRON_ENTITLEMENTS_SRC" "$electron_app"
+}
+
 # ---------------------------------------------------------------------------
 # 1. Resolve signing identity and build
 # ---------------------------------------------------------------------------
@@ -160,13 +209,24 @@ if [ -f "$REPO_ROOT/Sources/ClipLog/Resources/AppIcon.icns" ]; then
     cp "$REPO_ROOT/Sources/ClipLog/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 fi
 
+OTT_PIP_SRC="$REPO_ROOT/spikes/castlabs-electron-pip"
+if [ -f "$OTT_PIP_SRC/package.json" ]; then
+    echo "    Copying OTTPiP helper..."
+    if [ ! -d "$OTT_PIP_SRC/node_modules/electron/dist/Electron.app" ]; then
+        echo "    Installing OTTPiP dependencies..."
+        (cd "$OTT_PIP_SRC" && npm ci)
+    fi
+    ditto "$OTT_PIP_SRC" "$RESOURCES_DIR/OTTPiP"
+    find "$RESOURCES_DIR/OTTPiP/node_modules/.bin" -type f -maxdepth 1 -exec chmod +x {} \; 2>/dev/null || true
+    sign_ott_pip_helper
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Code-sign with hardened runtime
 # ---------------------------------------------------------------------------
 echo "==> Signing bundle with identity: '$SIGNING_IDENTITY'..."
 codesign_args=(
     --force \
-    --deep \
     --sign "$SIGNING_IDENTITY" \
     --entitlements "$ENTITLEMENTS_SRC" \
     --options runtime \

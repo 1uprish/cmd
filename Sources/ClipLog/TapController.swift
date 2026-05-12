@@ -8,6 +8,7 @@ final class TapController {
     private var clipStore: ClipStore?
     private var slotManager: SlotManager?
     private var menuBarController: MenuBarController?
+    private var cursorPiPController: CursorPiPController?
     private var sensitivePurgeTimer: Timer?
     private var settingsCancellables = Set<AnyCancellable>()
     private var appendSessionObserver: NSObjectProtocol?
@@ -28,12 +29,25 @@ final class TapController {
             pasteboardWatcher.updateImageOCREnabled(false)
             eventTap.updateHoldThreshold(TimeInterval(settings.holdThresholdMs) / 1000.0)
             observeSettings(settings)
+            let cursorPiP = CursorPiPController()
+            cursorPiPController = cursorPiP
 
             purgeExpiredHistoryIfNeeded(in: store, retentionDays: settings.retentionDays)
             purgeExpiredSensitiveItems(in: store)
 
             // Build MenuBarController first so onNewEntry can weakly reference it.
-            let mbc = MenuBarController(store: store, slots: slots)
+            let mbc = MenuBarController(
+                store: store,
+                slots: slots,
+                cursorPiPController: cursorPiP,
+                diagnosticsSnapshotProvider: { [weak self] in
+                    var snapshot = self?.eventTap.diagnosticsSnapshot() ?? [:]
+                    for (key, value) in HUDPanel.shared.diagnosticsSnapshot(reason: "debug_report") {
+                        snapshot["hud.\(key)"] = value
+                    }
+                    return snapshot
+                }
+            )
             menuBarController = mbc
             mbc.setup()
             AppendSessionPanel.shared.start()
@@ -50,6 +64,9 @@ final class TapController {
             pasteboardWatcher.onNewEntry = { [weak self, weak slots, weak mbc] entry in
                 slots?.ingest(entry)
                 mbc?.notifyNewEntry()
+                DispatchQueue.main.async {
+                    cursorPiP.handleClipboardEntry(entry)
+                }
                 if let store = self?.clipStore {
                     self?.purgeExpiredSensitiveItems(in: store)
                 }
@@ -78,10 +95,16 @@ final class TapController {
             HUDPanel.shared.onRestoreAfterCancelledDrag = { [weak self] sessionID in
                 self?.eventTap.hudDidShowExternally(sessionID: sessionID)
             }
+            HUDPanel.shared.onDragStart = { [weak self] in
+                self?.eventTap.hudDragDidBegin()
+            }
+            HUDPanel.shared.onDragEnd = { [weak self] in
+                self?.eventTap.hudDragDidEnd()
+            }
 
             // Safety net: lets the tap self-heal if hudDidDismiss was never called.
-            // Called on tapQueue; panel.isVisible is thread-safe (read-only property).
-            eventTap.isHUDActuallyVisible = { HUDPanel.shared.isVisible }
+            // Called on tapQueue; HUDPanel switches to main before touching AppKit.
+            eventTap.isHUDActuallyVisible = { HUDPanel.shared.isPanelActuallyVisible }
 
             // HUD key interactions — handled at HID level so they fire even
             // though the HUD is a nonactivatingPanel.
@@ -96,6 +119,9 @@ final class TapController {
             }
             eventTap.onHUDConfirmSelection = { sessionID in
                 HUDPanel.shared.confirmSelection(sessionID: sessionID)
+            }
+            eventTap.onHUDCopySelection = {
+                HUDPanel.shared.copySelection()
             }
             eventTap.onHUDCharFilter = { ch in
                 HUDPanel.shared.applyFilter(character: ch)

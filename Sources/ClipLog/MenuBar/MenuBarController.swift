@@ -6,6 +6,8 @@ public final class MenuBarController: NSObject {
 
     private let store: ClipStore
     private let slotManager: SlotManager
+    private let cursorPiPController: CursorPiPController
+    private let diagnosticsSnapshotProvider: () -> [String: String]
 
     private var statusItem: NSStatusItem?
     private var settingsWindow: NSWindow?
@@ -16,9 +18,16 @@ public final class MenuBarController: NSObject {
     private var recoveredObserver: (any NSObjectProtocol)?
     private var clearAllObserver:  (any NSObjectProtocol)?
 
-    public init(store: ClipStore, slots: SlotManager) {
+    init(
+        store: ClipStore,
+        slots: SlotManager,
+        cursorPiPController: CursorPiPController,
+        diagnosticsSnapshotProvider: @escaping () -> [String: String]
+    ) {
         self.store = store
         self.slotManager = slots
+        self.cursorPiPController = cursorPiPController
+        self.diagnosticsSnapshotProvider = diagnosticsSnapshotProvider
     }
 
     public func setup() {
@@ -32,6 +41,12 @@ public final class MenuBarController: NSObject {
                 accessibilityDescription: "cmd"
             )
             button.image?.isTemplate = true
+        }
+        cursorPiPController.anchorRectProvider = { [weak item] in
+            guard let button = item?.button,
+                  let window = button.window
+            else { return nil }
+            return window.convertToScreen(button.bounds)
         }
 
         item.menu = buildMenu()
@@ -112,6 +127,10 @@ public final class MenuBarController: NSObject {
 
         menu.addItem(.separator())
 
+        addCursorPiPItems(to: menu)
+
+        menu.addItem(.separator())
+
         let settingsItem = NSMenuItem(
             title: "Settings…",
             action: #selector(showSettings),
@@ -127,6 +146,22 @@ public final class MenuBarController: NSObject {
         )
         diagnosticsItem.target = self
         menu.addItem(diagnosticsItem)
+
+        let summaryItem = NSMenuItem(
+            title: "Open Daily Error Summary",
+            action: #selector(openDailyErrorSummary),
+            keyEquivalent: ""
+        )
+        summaryItem.target = self
+        menu.addItem(summaryItem)
+
+        let exportItem = NSMenuItem(
+            title: "Export Debug Report",
+            action: #selector(exportDebugReport),
+            keyEquivalent: ""
+        )
+        exportItem.target = self
+        menu.addItem(exportItem)
 
         let clearItem = NSMenuItem(
             title: "Clear All History…",
@@ -149,6 +184,72 @@ public final class MenuBarController: NSObject {
     }
 
     // MARK: - Actions
+
+    private func addCursorPiPItems(to menu: NSMenu) {
+        let settings = ClipLogSettings.shared
+        let title = settings.cursorPiPEnabled ? "CursorPiP Beta" : "CursorPiP Beta Off"
+        let header = NSMenuItem(title: title, action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+
+        let launchCurrentItem = NSMenuItem(
+            title: "Launch Current Video PiP",
+            action: #selector(openCursorPiPFromActiveBrowser),
+            keyEquivalent: ""
+        )
+        launchCurrentItem.target = self
+        launchCurrentItem.isEnabled = settings.cursorPiPEnabled
+        menu.addItem(launchCurrentItem)
+
+        let openClipboardItem = NSMenuItem(
+            title: "Open Clipboard PiP",
+            action: #selector(openCursorPiPFromClipboard),
+            keyEquivalent: ""
+        )
+        openClipboardItem.target = self
+        openClipboardItem.isEnabled = settings.cursorPiPEnabled
+        menu.addItem(openClipboardItem)
+
+        let openURLItem = NSMenuItem(
+            title: "Open Video URL...",
+            action: #selector(openCursorPiPURL),
+            keyEquivalent: ""
+        )
+        openURLItem.target = self
+        openURLItem.isEnabled = settings.cursorPiPEnabled
+        menu.addItem(openURLItem)
+
+        let pinItem = NSMenuItem(
+            title: "Pin Position",
+            action: #selector(toggleCursorPiPPin),
+            keyEquivalent: ""
+        )
+        pinItem.target = self
+        pinItem.state = settings.cursorPiPPinned ? .on : .off
+        pinItem.isEnabled = settings.cursorPiPEnabled
+        menu.addItem(pinItem)
+
+        let sizeMenu = NSMenu()
+        for preset in CursorPiPSizePreset.allCases {
+            let item = NSMenuItem(title: preset.rawValue.capitalized, action: #selector(setCursorPiPSize(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset.rawValue
+            sizeMenu.addItem(item)
+        }
+        let sizeItem = NSMenuItem(title: "Size", action: nil, keyEquivalent: "")
+        sizeItem.submenu = sizeMenu
+        sizeItem.isEnabled = settings.cursorPiPEnabled
+        menu.addItem(sizeItem)
+
+        let closeItem = NSMenuItem(
+            title: "Close CursorPiP",
+            action: #selector(closeCursorPiP),
+            keyEquivalent: ""
+        )
+        closeItem.target = self
+        closeItem.isEnabled = settings.cursorPiPEnabled && cursorPiPController.isVisible
+        menu.addItem(closeItem)
+    }
 
     @objc private func showHistory() {
         DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "show_history")
@@ -187,6 +288,50 @@ public final class MenuBarController: NSObject {
             action: "show_history",
             details: ["success": "true", "window": "new"]
         )
+    }
+
+    @objc private func openCursorPiPFromClipboard() {
+        DiagnosticsLogbook.shared.actionInput(feature: "cursor_pip", action: "open_clipboard")
+        cursorPiPController.openFromPasteboard()
+        statusItem?.menu = buildMenu()
+        DiagnosticsLogbook.shared.actionOutput(feature: "cursor_pip", action: "open_clipboard", details: ["success": "true"])
+    }
+
+    @objc private func openCursorPiPFromActiveBrowser() {
+        DiagnosticsLogbook.shared.actionInput(feature: "cursor_pip", action: "open_active_browser")
+        cursorPiPController.openFromActiveBrowser()
+        statusItem?.menu = buildMenu()
+        DiagnosticsLogbook.shared.actionOutput(feature: "cursor_pip", action: "open_active_browser", details: ["success": "true"])
+    }
+
+    @objc private func openCursorPiPURL() {
+        DiagnosticsLogbook.shared.actionInput(feature: "cursor_pip", action: "open_url")
+        cursorPiPController.promptForURL()
+        statusItem?.menu = buildMenu()
+        DiagnosticsLogbook.shared.actionOutput(feature: "cursor_pip", action: "open_url", details: ["success": "true"])
+    }
+
+    @objc private func toggleCursorPiPFollow() {
+        cursorPiPController.toggleFollowing()
+        statusItem?.menu = buildMenu()
+    }
+
+    @objc private func toggleCursorPiPPin() {
+        cursorPiPController.togglePinned()
+        statusItem?.menu = buildMenu()
+    }
+
+    @objc private func setCursorPiPSize(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let preset = CursorPiPSizePreset(rawValue: raw)
+        else { return }
+        cursorPiPController.applySizePreset(preset)
+        statusItem?.menu = buildMenu()
+    }
+
+    @objc private func closeCursorPiP() {
+        cursorPiPController.hide()
+        statusItem?.menu = buildMenu()
     }
 
     /// Called whenever a new entry is added so the open history window stays current.
@@ -265,6 +410,50 @@ public final class MenuBarController: NSObject {
         }
         NSWorkspace.shared.activateFileViewerSelecting([url])
         DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "open_diagnostics_log", details: ["success": "true"])
+    }
+
+    @objc private func openDailyErrorSummary() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "open_daily_error_summary")
+        DiagnosticsLogbook.shared.writeDailyErrorSummary { url in
+            DispatchQueue.main.async {
+                guard let url else {
+                    DiagnosticsLogbook.shared.actionOutput(
+                        feature: "menu_bar",
+                        action: "open_daily_error_summary",
+                        details: ["success": "false", "reason": "summary_unavailable"]
+                    )
+                    return
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                DiagnosticsLogbook.shared.actionOutput(
+                    feature: "menu_bar",
+                    action: "open_daily_error_summary",
+                    details: ["success": "true", "path": url.path]
+                )
+            }
+        }
+    }
+
+    @objc private func exportDebugReport() {
+        DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "export_debug_report")
+        DiagnosticsLogbook.shared.exportDebugBundle(appState: diagnosticsSnapshotProvider()) { url in
+            DispatchQueue.main.async {
+                guard let url else {
+                    DiagnosticsLogbook.shared.actionOutput(
+                        feature: "menu_bar",
+                        action: "export_debug_report",
+                        details: ["success": "false", "reason": "export_failed"]
+                    )
+                    return
+                }
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                DiagnosticsLogbook.shared.actionOutput(
+                    feature: "menu_bar",
+                    action: "export_debug_report",
+                    details: ["success": "true", "path": url.path]
+                )
+            }
+        }
     }
 
     @objc private func clearAllHistory() {

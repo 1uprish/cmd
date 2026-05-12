@@ -1,0 +1,613 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' https: data: blob: 'unsafe-inline'; frame-src https:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CMD OTT PiP</title>
+  <style>
+    html, body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    }
+
+    #shell {
+      position: fixed;
+      inset: 14px;
+      overflow: hidden;
+      border-radius: 22px;
+      background: #000;
+      box-shadow: 0 0 18px rgba(0, 0, 0, 0.28), 0 18px 44px rgba(0, 0, 0, 0.36);
+      -webkit-mask-repeat: no-repeat;
+      -webkit-mask-size: 100% 100%;
+      -webkit-mask-position: center;
+    }
+
+    webview {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      background: #000;
+      z-index: 1;
+    }
+
+    #drag {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      inset: 12px;
+      pointer-events: auto;
+      cursor: grab;
+      z-index: 5;
+    }
+
+    body.dragging #drag {
+      cursor: grabbing;
+    }
+
+    #chrome {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      opacity: 1;
+      transition: opacity 150ms ease;
+      z-index: 10;
+    }
+
+    body.playback:hover #chrome,
+    body.auth #chrome,
+    body.error #chrome {
+      opacity: 1;
+    }
+
+    #topShade {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 48px;
+      background: linear-gradient(to bottom, rgba(0, 0, 0, 0.46), rgba(0, 0, 0, 0));
+      pointer-events: none;
+    }
+
+    #controls {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      top: 8px;
+      right: 8px;
+      display: flex;
+      gap: 7px;
+      pointer-events: auto;
+      z-index: 12;
+    }
+
+    .resize-handle {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      width: 34px;
+      height: 34px;
+      pointer-events: auto;
+      opacity: 0;
+      transition: opacity 150ms ease;
+      z-index: 11;
+    }
+
+    .resize-edge {
+      -webkit-app-region: no-drag;
+      position: absolute;
+      pointer-events: auto;
+      opacity: 0;
+      z-index: 11;
+    }
+
+    .resize-edge.n,
+    .resize-edge.s {
+      left: 54px;
+      right: 54px;
+      height: 12px;
+      cursor: ns-resize;
+    }
+
+    .resize-edge.e,
+    .resize-edge.w {
+      top: 54px;
+      bottom: 54px;
+      width: 12px;
+      cursor: ew-resize;
+    }
+
+    .resize-edge.n {
+      top: 0;
+    }
+
+    .resize-edge.s {
+      bottom: 0;
+    }
+
+    .resize-edge.e {
+      right: 0;
+    }
+
+    .resize-edge.w {
+      left: 0;
+    }
+
+    .resize-handle::after {
+      content: "";
+      position: absolute;
+      width: 13px;
+      height: 13px;
+      opacity: 0.72;
+    }
+
+    .resize-handle.nw {
+      top: 10px;
+      left: 10px;
+      cursor: nwse-resize;
+    }
+
+    .resize-handle.ne {
+      top: 10px;
+      right: 10px;
+      cursor: nesw-resize;
+    }
+
+    .resize-handle.sw {
+      left: 10px;
+      bottom: 10px;
+      cursor: nesw-resize;
+    }
+
+    .resize-handle.se {
+      right: 10px;
+      bottom: 10px;
+      cursor: nwse-resize;
+    }
+
+    .resize-handle.nw::after {
+      top: 0;
+      left: 0;
+      border-left: 2px solid rgba(255, 255, 255, 0.72);
+      border-top: 2px solid rgba(255, 255, 255, 0.72);
+    }
+
+    .resize-handle.ne::after {
+      top: 0;
+      right: 0;
+      border-right: 2px solid rgba(255, 255, 255, 0.72);
+      border-top: 2px solid rgba(255, 255, 255, 0.72);
+    }
+
+    .resize-handle.sw::after {
+      left: 0;
+      bottom: 0;
+      border-left: 2px solid rgba(255, 255, 255, 0.72);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.72);
+    }
+
+    .resize-handle.se::after {
+      right: 0;
+      bottom: 0;
+      border-right: 2px solid rgba(255, 255, 255, 0.72);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.72);
+    }
+
+    body:hover .resize-handle,
+    body:hover .resize-edge,
+    body.resizing .resize-edge,
+    body.resizing .resize-handle {
+      opacity: 1;
+    }
+
+    button {
+      width: 26px;
+      height: 26px;
+      border: 0;
+      border-radius: 13px;
+      color: white;
+      background: rgba(18, 18, 20, 0.58);
+      font-size: 14px;
+      line-height: 26px;
+      cursor: pointer;
+      backdrop-filter: blur(16px);
+    }
+
+    button:hover {
+      background: rgba(255, 255, 255, 0.22);
+    }
+
+    #authCard {
+      position: absolute;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      width: min(520px, calc(100% - 36px));
+      box-sizing: border-box;
+      padding: 14px;
+      border-radius: 16px;
+      color: white;
+      background: rgba(12, 12, 14, 0.86);
+      box-shadow: 0 18px 44px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(18px);
+      display: none;
+      -webkit-app-region: no-drag;
+      z-index: 20;
+      pointer-events: auto;
+    }
+
+    body.auth #authCard,
+    body.error #authCard {
+      display: block;
+    }
+
+    #authTitle {
+      font-size: 14px;
+      font-weight: 650;
+      margin-bottom: 4px;
+    }
+
+    #authText {
+      font-size: 12px;
+      line-height: 1.35;
+      color: rgba(255, 255, 255, 0.72);
+      margin-bottom: 12px;
+    }
+
+    #authActions {
+      display: flex;
+      gap: 8px;
+      justify-content: flex-end;
+    }
+
+    #authActions button {
+      width: auto;
+      height: 30px;
+      line-height: 30px;
+      padding: 0 12px;
+      font-size: 12px;
+    }
+
+    #primary {
+      background: rgba(255, 255, 255, 0.9);
+      color: #111;
+    }
+  </style>
+</head>
+<body class="playback">
+  <div id="shell">
+    <webview id="player" partition="persist:cmd-ott-pip" allowpopups></webview>
+    <div id="drag"></div>
+    <div id="chrome">
+      <div id="topShade"></div>
+      <div id="controls">
+        <button id="auth" title="Sign in">↗</button>
+        <button id="mute" title="Mute">S</button>
+        <button id="close" title="Close">×</button>
+      </div>
+      <div class="resize-handle nw" data-edge="nw" title="Resize"></div>
+      <div class="resize-handle ne" data-edge="ne" title="Resize"></div>
+      <div class="resize-handle sw" data-edge="sw" title="Resize"></div>
+      <div class="resize-handle se" data-edge="se" title="Resize"></div>
+      <div class="resize-edge n" data-edge="n" title="Resize"></div>
+      <div class="resize-edge e" data-edge="e" title="Resize"></div>
+      <div class="resize-edge s" data-edge="s" title="Resize"></div>
+      <div class="resize-edge w" data-edge="w" title="Resize"></div>
+    </div>
+    <div id="authCard">
+      <div id="authTitle">Sign in once</div>
+      <div id="authText">Use CMD login once. After sign-in, CMD returns to this episode automatically.</div>
+      <div id="authActions">
+        <button id="chromeOpen">Open Chrome</button>
+        <button id="helperAuth">Sign in</button>
+        <button id="primary">Open episode</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(location.search);
+    let url = params.get('url') || 'about:blank';
+    let mode = params.get('mode') || 'playback';
+    const player = document.getElementById('player');
+    const shell = document.getElementById('shell');
+    const muteButton = document.getElementById('mute');
+    const resizeHandles = document.querySelectorAll('.resize-handle, .resize-edge');
+    let resizeStart = null;
+    let pendingResize = null;
+    let resizeFrame = null;
+    let pendingDrag = null;
+    let dragFrame = null;
+    let maskFrame = null;
+    let targetReloadedAfterAuth = false;
+
+    player.src = url;
+    setMode(mode);
+    scheduleSoftEdgeMask();
+
+    const dragStrip = document.getElementById('drag');
+    document.getElementById('close').addEventListener('click', () => window.cmdPiP.close());
+    muteButton.addEventListener('click', () => window.cmdPiP.toggleMute());
+    document.getElementById('auth').addEventListener('click', () => setMode('auth', true));
+    document.getElementById('chromeOpen').addEventListener('click', () => window.cmdPiP.openChrome(player.src || url));
+    document.getElementById('helperAuth').addEventListener('click', () => setMode('auth', true));
+    document.getElementById('primary').addEventListener('click', () => reloadTargetEpisode());
+
+    window.addEventListener('keydown', event => {
+      if (event.key === 'Escape') window.cmdPiP.close();
+    });
+
+    resizeHandles.forEach(handle => {
+      handle.addEventListener('pointerdown', event => {
+        event.preventDefault();
+        resizeStart = {
+          edge: handle.dataset.edge,
+          x: event.screenX,
+          y: event.screenY,
+          width: outerWidth,
+          height: outerHeight,
+          windowX: screenX,
+          windowY: screenY
+        };
+        document.body.classList.add('resizing');
+        handle.setPointerCapture(event.pointerId);
+      });
+
+      handle.addEventListener('pointermove', event => {
+        if (!resizeStart) return;
+        scheduleResize(event.screenX, event.screenY);
+      });
+
+      handle.addEventListener('pointerup', () => {
+        resizeStart = null;
+        document.body.classList.remove('resizing');
+      });
+
+      handle.addEventListener('pointercancel', () => {
+        resizeStart = null;
+        document.body.classList.remove('resizing');
+      });
+    });
+
+    window.cmdPiP.onMuted(muted => {
+      muteButton.textContent = muted ? 'M' : 'S';
+    });
+    window.cmdPiP.onLoadTarget(targetURL => {
+      if (targetURL) loadTarget(targetURL);
+    });
+
+    let pressTimer = null;
+    let pressStart = null;
+    dragStrip.addEventListener('pointerdown', event => {
+      event.preventDefault();
+      pressStart = { x: event.screenX, y: event.screenY };
+      window.cmdPiP.dragStart(event.screenX, event.screenY);
+      document.body.classList.add('dragging');
+      dragStrip.setPointerCapture(event.pointerId);
+      clearTimeout(pressTimer);
+      pressTimer = setTimeout(() => {
+        window.cmdPiP.springNearCursor(event.screenX, event.screenY);
+      }, 300);
+    });
+
+    dragStrip.addEventListener('pointermove', event => {
+      if (!pressStart) return;
+      if (Math.abs(event.screenX - pressStart.x) > 8 || Math.abs(event.screenY - pressStart.y) > 8) {
+        clearTimeout(pressTimer);
+        scheduleDrag(event.screenX, event.screenY);
+      }
+    });
+
+    dragStrip.addEventListener('pointerup', () => {
+      clearTimeout(pressTimer);
+      window.cmdPiP.dragEnd();
+      document.body.classList.remove('dragging');
+      pressStart = null;
+    });
+
+    dragStrip.addEventListener('pointercancel', () => {
+      clearTimeout(pressTimer);
+      window.cmdPiP.dragEnd();
+      document.body.classList.remove('dragging');
+      pressStart = null;
+    });
+
+    player.addEventListener('did-navigate', () => maybePromotePlayback());
+    player.addEventListener('did-navigate-in-page', () => maybePromotePlayback());
+    player.addEventListener('did-finish-load', () => maybePromotePlayback());
+    player.addEventListener('did-fail-load', event => {
+      document.body.classList.add('error');
+      document.getElementById('authTitle').textContent = 'Playback issue';
+      document.getElementById('authText').textContent = event.errorDescription || 'Try opening this episode again. If Netflix blocks playback, use Chrome.';
+    });
+    player.addEventListener('render-process-gone', () => {
+      setTimeout(() => player.reload(), 300);
+    });
+    player.addEventListener('console-message', event => {
+      console.log('[guest]', event.message);
+    });
+
+    function setMode(nextMode, notify = false) {
+      mode = nextMode;
+      document.body.className = nextMode;
+      scheduleSoftEdgeMask();
+      if (notify) {
+        if (nextMode === 'auth') window.cmdPiP.auth();
+        if (nextMode === 'playback') window.cmdPiP.playback();
+      }
+    }
+
+    function maybePromotePlayback() {
+      if (mode !== 'auth') return;
+      const current = player.getURL?.() || '';
+      if (current && current !== url && isServiceHome(current) && !targetReloadedAfterAuth) {
+        targetReloadedAfterAuth = true;
+        setTimeout(() => reloadTargetEpisode(), 600);
+        return;
+      }
+      if (isPlayableURL(current)) {
+        setTimeout(() => setMode('playback', true), 900);
+      }
+    }
+
+    function reloadTargetEpisode() {
+      targetReloadedAfterAuth = true;
+      loadTarget(url);
+      setMode('playback', true);
+    }
+
+    function scheduleResize(pointerX, pointerY) {
+      pendingResize = computeResizeBounds(pointerX, pointerY);
+      if (resizeFrame) return;
+      resizeFrame = requestAnimationFrame(() => {
+        resizeFrame = null;
+        if (!pendingResize) return;
+        window.cmdPiP.resize(pendingResize);
+        pendingResize = null;
+        scheduleSoftEdgeMask();
+      });
+    }
+
+    function scheduleDrag(pointerX, pointerY) {
+      pendingDrag = { x: pointerX, y: pointerY };
+      if (dragFrame) return;
+      dragFrame = requestAnimationFrame(() => {
+        dragFrame = null;
+        if (!pendingDrag) return;
+        window.cmdPiP.dragMove(pendingDrag.x, pendingDrag.y);
+        pendingDrag = null;
+      });
+    }
+
+    function computeResizeBounds(pointerX, pointerY) {
+      const dx = pointerX - resizeStart.x;
+      const dy = pointerY - resizeStart.y;
+      const edge = resizeStart.edge;
+      const hasWest = edge.includes('w');
+      const hasEast = edge.includes('e');
+      const hasNorth = edge.includes('n');
+      const hasSouth = edge.includes('s');
+      const horizontal = hasWest ? -dx : hasEast ? dx : 0;
+      const vertical = hasNorth ? -dy : hasSouth ? dy : 0;
+      const aspect = 16 / 9;
+      let width = Math.max(356, resizeStart.width + horizontal);
+      let height = Math.max(200, resizeStart.height + vertical);
+
+      if ((hasEast || hasWest) && !(hasNorth || hasSouth)) {
+        height = width / aspect;
+      } else if ((hasNorth || hasSouth) && !(hasEast || hasWest)) {
+        width = height * aspect;
+      } else if (Math.abs(horizontal) > Math.abs(vertical)) {
+        height = width / aspect;
+      } else {
+        width = height * aspect;
+      }
+
+      width = Math.max(356, width);
+      height = Math.max(200, height);
+
+      let x = resizeStart.windowX;
+      let y = resizeStart.windowY;
+      if (hasWest) x += resizeStart.width - width;
+      if (hasNorth) y += resizeStart.height - height;
+      if ((hasNorth || hasSouth) && !(hasEast || hasWest)) {
+        x += (resizeStart.width - width) / 2;
+      }
+      if ((hasEast || hasWest) && !(hasNorth || hasSouth)) {
+        y += (resizeStart.height - height) / 2;
+      }
+      return { x, y, width, height };
+    }
+
+    function loadTarget(targetURL) {
+      url = targetURL;
+      targetReloadedAfterAuth = false;
+      if (!targetURL || player.src === targetURL) {
+        try { player.reload(); } catch (_) {}
+        return;
+      }
+      player.src = targetURL;
+    }
+
+    function isPlayableURL(current) {
+      return /\/watch|\/play|\/video|\/movies|\/shows|\/title/i.test(current);
+    }
+
+    function isServiceHome(current) {
+      try {
+        const parsed = new URL(current);
+        return /netflix|primevideo|hotstar|jiocinema/i.test(parsed.hostname)
+          && /^\/?(browse|in\/?|home)?$/.test(parsed.pathname.replace(/\/+$/, ''));
+      } catch (_) {
+        return false;
+      }
+    }
+
+    function scheduleSoftEdgeMask() {
+      if (maskFrame) return;
+      maskFrame = requestAnimationFrame(() => {
+        maskFrame = null;
+        applySoftEdgeMask();
+      });
+    }
+
+    function applySoftEdgeMask() {
+      const rect = shell.getBoundingClientRect();
+      const maxMaskWidth = 520;
+      const scale = Math.min(1, maxMaskWidth / Math.max(rect.width, 1));
+      const width = Math.max(1, Math.round(rect.width * scale));
+      const height = Math.max(1, Math.round(rect.height * scale));
+      const shortSide = Math.min(width, height);
+      const radius = clamp(shortSide * 0.085, 14, shortSide / 2);
+      const edgeBlur = clamp(shortSide * 0.10, 12, shortSide * 0.24);
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      const image = ctx.createImageData(width, height);
+      const halfWidth = width / 2;
+      const halfHeight = height / 2;
+
+      for (let y = 0; y < height; y++) {
+        const cy = y + 0.5 - halfHeight;
+        for (let x = 0; x < width; x++) {
+          const cx = x + 0.5 - halfWidth;
+          const signedDistance = roundedRectSDF(cx, cy, halfWidth, halfHeight, radius);
+          const alpha = maskAlpha(signedDistance, edgeBlur);
+          const offset = (y * width + x) * 4;
+          image.data[offset] = 255;
+          image.data[offset + 1] = 255;
+          image.data[offset + 2] = 255;
+          image.data[offset + 3] = Math.round(alpha * 255);
+        }
+      }
+      ctx.putImageData(image, 0, 0);
+      shell.style.webkitMaskImage = `url(${canvas.toDataURL('image/png')})`;
+    }
+
+    function roundedRectSDF(x, y, halfWidth, halfHeight, radius) {
+      const qx = Math.abs(x) - halfWidth + radius;
+      const qy = Math.abs(y) - halfHeight + radius;
+      const outsideX = Math.max(qx, 0);
+      const outsideY = Math.max(qy, 0);
+      const outsideDistance = Math.hypot(outsideX, outsideY);
+      const insideDistance = Math.min(Math.max(qx, qy), 0);
+      return outsideDistance + insideDistance - radius;
+    }
+
+    function maskAlpha(signedDistance, edgeBlur) {
+      if (edgeBlur <= 0) return signedDistance <= 0 ? 1 : 0;
+      const t = clamp((-signedDistance) / edgeBlur, 0, 1);
+      return t * t * (3 - 2 * t);
+    }
+
+    function clamp(value, min, max) {
+      return Math.max(min, Math.min(value, max));
+    }
+  </script>
+</body>
+</html>

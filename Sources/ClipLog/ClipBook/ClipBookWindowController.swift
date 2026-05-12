@@ -363,20 +363,25 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     /// Reload all entries from the store. Safe to call from any queue.
     public func reloadData() {
         DiagnosticsLogbook.shared.actionInput(feature: "history_window", action: "reload")
-        let entries = (try? store?.all()) ?? []
+        let limit = ClipLogSettings.shared.historyDisplayLimit
+        let entries = (try? store?.recent(limit: limit)) ?? []
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             DiagnosticsLogbook.shared.actionProcess(
                 feature: "history_window",
                 action: "reload",
-                details: ["step": "apply_entries", "entryCount": "\(entries.count)"]
+                details: [
+                    "step": "apply_entries",
+                    "entryCount": "\(entries.count)",
+                    "limit": "\(limit)"
+                ]
             )
             self.allEntries = entries
             self.applyFilters()
             DiagnosticsLogbook.shared.actionOutput(
                 feature: "history_window",
                 action: "reload",
-                details: ["success": "true", "entryCount": "\(entries.count)"]
+                details: ["success": "true", "entryCount": "\(entries.count)", "limit": "\(limit)"]
             )
         }
     }
