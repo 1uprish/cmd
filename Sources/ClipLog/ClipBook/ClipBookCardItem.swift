@@ -83,7 +83,10 @@ final class ClipBookCardItem: NSCollectionViewItem {
         root.wantsLayer = true
 
         // ── Visual-effect background ──────────────────────────────────────
-        cardEffect.material         = .menu
+        // Lighter interactive material over the heavier window backdrop.
+        cardEffect.material         = AccessibilityEnvironment.shared.shouldReduceTransparency
+            ? .contentBackground
+            : .menu
         cardEffect.blendingMode     = .behindWindow
         cardEffect.state            = .active
         cardEffect.wantsLayer       = true
@@ -100,7 +103,9 @@ final class ClipBookCardItem: NSCollectionViewItem {
         ])
 
         // ── Subtle border ring ────────────────────────────────────────────
-        borderLayer.borderWidth   = CmdVisualStyle.hairline
+        borderLayer.borderWidth   = AccessibilityEnvironment.shared.shouldIncreaseContrast
+            ? 1.0
+            : CmdVisualStyle.hairline
         borderLayer.cornerRadius  = CmdVisualStyle.cardCornerRadius
         borderLayer.borderColor   = CmdVisualStyle.cardBorder.cgColor
         borderLayer.frame         = root.bounds

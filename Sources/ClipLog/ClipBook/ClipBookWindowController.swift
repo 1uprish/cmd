@@ -114,7 +114,11 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         contentView.wantsLayer = true
 
         // ── Full-window backdrop blur ───────────────────────────────────
-        backdropEffect.material     = .hudWindow
+        // Heavier structural material; cards above it stay lighter so the
+        // hierarchy reads and we never stack a light surface on another.
+        backdropEffect.material     = AccessibilityEnvironment.shared.shouldReduceTransparency
+            ? .underWindowBackground
+            : .sidebar
         backdropEffect.blendingMode = .behindWindow
         backdropEffect.state        = .active
         backdropEffect.translatesAutoresizingMaskIntoConstraints = false
