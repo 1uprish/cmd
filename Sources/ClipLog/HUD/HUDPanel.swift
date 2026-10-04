@@ -119,22 +119,26 @@ public final class HUDPanel {
             }
         }
 
-        var inTiming: CAMediaTimingFunction {
+        /// Entry curve control points, shared by both directions.
+        private var inControlPoints: (Float, Float, Float, Float) {
             switch self {
-            case .magnetic: return CAMediaTimingFunction(controlPoints: 0.13, 0.90, 0.20, 1.00)
-            case .genie: return CAMediaTimingFunction(controlPoints: 0.10, 0.92, 0.18, 1.00)
-            case .cascade: return CAMediaTimingFunction(controlPoints: 0.18, 0.84, 0.24, 1.00)
-            case .calm: return CAMediaTimingFunction(controlPoints: 0.25, 0.80, 0.25, 1.00)
+            case .magnetic: return (0.13, 0.90, 0.20, 1.00)
+            case .genie: return (0.10, 0.92, 0.18, 1.00)
+            case .cascade: return (0.18, 0.84, 0.24, 1.00)
+            case .calm: return (0.25, 0.80, 0.25, 1.00)
             }
         }
 
+        var inTiming: CAMediaTimingFunction {
+            let p = inControlPoints
+            return CAMediaTimingFunction(controlPoints: p.0, p.1, p.2, p.3)
+        }
+
+        /// Inverse of the entry curve so dismissal retraces the same path
+        /// instead of reading as a disconnected second animation.
         var outTiming: CAMediaTimingFunction {
-            switch self {
-            case .magnetic: return CAMediaTimingFunction(controlPoints: 0.34, 0.00, 0.86, 0.18)
-            case .genie: return CAMediaTimingFunction(controlPoints: 0.38, 0.00, 1.00, 0.08)
-            case .cascade: return CAMediaTimingFunction(controlPoints: 0.40, 0.00, 0.92, 0.22)
-            case .calm: return CAMediaTimingFunction(controlPoints: 0.32, 0.00, 0.68, 1.00)
-            }
+            let p = inControlPoints
+            return CAMediaTimingFunction(controlPoints: 1 - p.2, 1 - p.3, 1 - p.0, 1 - p.1)
         }
     }
 
