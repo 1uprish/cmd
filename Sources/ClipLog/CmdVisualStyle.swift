@@ -51,6 +51,11 @@ enum CmdVisualStyle {
     static let cardBorderHover = NSColor.white.withAlphaComponent(0.22)
     static let cardBorderSelected = NSColor.white.withAlphaComponent(0.30)
 
+    // Increase-contrast variants for the always-dark HUD chrome.
+    static let cardBorderStrong = NSColor.white.withAlphaComponent(0.28)
+    static let cardBorderHoverStrong = NSColor.white.withAlphaComponent(0.40)
+    static let cardBorderSelectedStrong = NSColor.white.withAlphaComponent(0.52)
+
     static let primaryText = NSColor.white
     static let secondaryText = NSColor.white.withAlphaComponent(0.72)
     static let tertiaryText = NSColor.white.withAlphaComponent(0.48)

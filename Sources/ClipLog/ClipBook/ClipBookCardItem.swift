@@ -107,7 +107,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
             ? 1.0
             : CmdVisualStyle.hairline
         borderLayer.cornerRadius  = CmdVisualStyle.cardCornerRadius
-        borderLayer.borderColor   = CmdVisualStyle.cardBorder.cgColor
+        borderLayer.borderColor   = NSColor.separatorColor.cgColor
         borderLayer.frame         = root.bounds
         borderLayer.autoresizingMask = [.layerWidthSizable, .layerHeightSizable]
         root.layer?.addSublayer(borderLayer)
@@ -463,6 +463,11 @@ final class ClipBookCardItem: NSCollectionViewItem {
 
     // MARK: - Hover / selection
 
+    // Adaptive borders so cards read correctly in light and dark, unlike the
+    // always-dark HUD chrome.
+    private var idleBorderColor: NSColor { NSColor.separatorColor }
+    private var hoverBorderColor: NSColor { NSColor.secondaryLabelColor.withAlphaComponent(0.55) }
+
     override func mouseEntered(with event: NSEvent) {
         isHovered = true
         applyHoverState(true)
@@ -478,9 +483,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration       = accessibility.motionDuration(0.12)
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            borderLayer.borderColor = hovered
-                ? CmdVisualStyle.cardBorderHover.cgColor
-                : CmdVisualStyle.cardBorder.cgColor
+            borderLayer.borderColor = (hovered ? hoverBorderColor : idleBorderColor).cgColor
             view.layer?.shadowRadius = hovered ? 12 : 8
         }
         NSAnimationContext.runAnimationGroup { ctx in
@@ -499,9 +502,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
             ctx.duration = AccessibilityEnvironment.shared.motionDuration(0.12)
             borderLayer.borderColor = selected
                 ? NSColor.controlAccentColor.withAlphaComponent(0.80).cgColor
-                : (isHovered
-                   ? CmdVisualStyle.cardBorderHover.cgColor
-                   : CmdVisualStyle.cardBorder.cgColor)
+                : (isHovered ? hoverBorderColor : idleBorderColor).cgColor
             borderLayer.borderWidth = selected ? 1.5 : 0.5
         }
     }

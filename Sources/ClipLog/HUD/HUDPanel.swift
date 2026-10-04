@@ -217,6 +217,9 @@ public final class HUDPanel {
             defer: true
         )
         panel.level = .floating
+        // The register is intentionally dark glass; pin the appearance so the
+        // light-on-dark palette stays correct regardless of the system theme.
+        panel.appearance = NSAppearance(named: .darkAqua)
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = false
@@ -2133,11 +2136,17 @@ private final class HUDRowView: NSView {
             background = NSColor(calibratedWhite: 0.15, alpha: cardOpacity * tint)
         }
         layer?.backgroundColor = background.cgColor
-        layer?.borderWidth = accessibility.shouldIncreaseContrast ? 1.0 : 0.5
-        layer?.borderColor = (isSelected && highlighted
-            ? CmdVisualStyle.cardBorderSelected
-            : (hovering && highlighted ? CmdVisualStyle.cardBorderHover : CmdVisualStyle.cardBorder)
-        ).cgColor
+        let contrast = accessibility.shouldIncreaseContrast
+        layer?.borderWidth = contrast ? 1.0 : 0.5
+        let border: NSColor
+        if isSelected && highlighted {
+            border = contrast ? CmdVisualStyle.cardBorderSelectedStrong : CmdVisualStyle.cardBorderSelected
+        } else if hovering && highlighted {
+            border = contrast ? CmdVisualStyle.cardBorderHoverStrong : CmdVisualStyle.cardBorderHover
+        } else {
+            border = contrast ? CmdVisualStyle.cardBorderStrong : CmdVisualStyle.cardBorder
+        }
+        layer?.borderColor = border.cgColor
         layer?.shadowColor = NSColor.black.withAlphaComponent(isSelected ? 0.32 : 0.22).cgColor
         layer?.shadowOpacity = highlighted ? 1 : 0
         layer?.shadowRadius = isSelected ? 20 : 13
