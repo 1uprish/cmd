@@ -239,6 +239,11 @@ public enum ClipPasteboardWriter {
             return dragOptimized ? dragPasteboardWriters(for: entries[0]) : pasteboardWriters(for: entries[0])
         }
 
+        if !dragOptimized,
+           let mixedItem = mixedPasteboardItem(for: entries) {
+            return [mixedItem]
+        }
+
         var writers: [NSPasteboardWriting] = []
         let textFragments = entries.compactMap(textFragment(for:))
         if !textFragments.isEmpty {
@@ -262,6 +267,111 @@ public enum ClipPasteboardWriter {
             writers.append(plainTextItem(entries.map(\.previewText).joined(separator: "\n")))
         }
         return writers
+    }
+
+    private static func mixedPasteboardItem(for entries: [ClipEntry]) -> NSPasteboardItem? {
+        let item = NSPasteboardItem()
+        let plainText = entries.compactMap(textFragment(for:)).joined(separator: "\n")
+        if !plainText.isEmpty {
+            item.setString(plainText, forType: .string)
+        }
+
+        let imageEntries = entries.filter { $0.contentType == .image }
+        if !imageEntries.isEmpty {
+            if let html = mixedHTML(for: entries) {
+                item.setString(html, forType: .html)
+            }
+            if let attributed = mixedAttributedString(for: entries) {
+                let range = NSRange(location: 0, length: attributed.length)
+                if let rtfdWrapper = try? attributed.fileWrapper(
+                    from: range,
+                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtfd]
+                ),
+                   let rtfdData = rtfdWrapper.serializedRepresentation {
+                    item.setData(rtfdData, forType: .rtfd)
+                    item.setData(rtfdData, forType: .flatRTFD)
+                }
+            }
+        }
+
+        return item.types.isEmpty ? nil : item
+    }
+
+    private static func mixedHTML(for entries: [ClipEntry]) -> String? {
+        var body = ""
+        for entry in entries {
+            if entry.contentType == .image,
+               let data = originalImageData(for: entry),
+               let image = NSImage(data: data),
+               let png = pngData(from: data, image: image) {
+                body += """
+                <div><img src="data:image/png;base64,\(png.base64EncodedString())" style="max-width:480px;height:auto;"></div>
+                """
+            } else if let text = textFragment(for: entry) {
+                let escaped = escapeHTML(text).replacingOccurrences(of: "\n", with: "<br>")
+                body += "<div>\(escaped)</div>"
+            }
+        }
+
+        guard !body.isEmpty else { return nil }
+        return """
+        <!doctype html><html><head><meta charset="utf-8"></head><body>\(body)</body></html>
+        """
+    }
+
+    private static func mixedAttributedString(for entries: [ClipEntry]) -> NSAttributedString? {
+        let result = NSMutableAttributedString()
+        var needsSeparator = false
+
+        for entry in entries {
+            if needsSeparator {
+                result.append(NSAttributedString(string: "\n"))
+            }
+
+            if entry.contentType == .image,
+               let data = originalImageData(for: entry),
+               let image = NSImage(data: data) {
+                let attachment = NSTextAttachment()
+                attachment.image = imageForAttachment(image)
+                result.append(NSAttributedString(attachment: attachment))
+                needsSeparator = true
+            } else if let text = textFragment(for: entry) {
+                result.append(NSAttributedString(string: text))
+                needsSeparator = true
+            }
+        }
+
+        return result.length == 0 ? nil : result
+    }
+
+    private static func imageForAttachment(_ image: NSImage) -> NSImage {
+        let maxWidth: CGFloat = 520
+        let maxHeight: CGFloat = 520
+        let widthRatio = maxWidth / max(image.size.width, 1)
+        let heightRatio = maxHeight / max(image.size.height, 1)
+        let scale = min(1, widthRatio, heightRatio)
+        let size = NSSize(width: image.size.width * scale, height: image.size.height * scale)
+        guard size.width > 0, size.height > 0, scale < 1 else { return image }
+
+        let resized = NSImage(size: size)
+        resized.lockFocus()
+        image.draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: .zero, size: image.size),
+            operation: .copy,
+            fraction: 1
+        )
+        resized.unlockFocus()
+        return resized
+    }
+
+    private static func escapeHTML(_ value: String) -> String {
+        value
+            .replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
     }
 
     private static func textFragment(for entry: ClipEntry) -> String? {

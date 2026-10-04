@@ -4,6 +4,10 @@ import XCTest
 @testable import ClipLogCore
 
 final class ClipPasteboardWriterTests: XCTestCase {
+    private static let onePixelPNG = Data(base64Encoded: """
+    iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
+    """)!
+
     func test_batchTextWritersJoinInOrder() throws {
         let entries = [
             textEntry("alpha"),
@@ -38,6 +42,22 @@ final class ClipPasteboardWriterTests: XCTestCase {
         XCTAssertEqual(pasteboard.string(forType: .string), "alpha\nhttps://cmd.local/test")
     }
 
+    func test_mixedImageBatchKeepsTextFallback() throws {
+        let entries = [
+            imageEntry(Self.onePixelPNG),
+            textEntry("alpha"),
+            urlEntry("https://cmd.local/test")
+        ]
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("cmd.test.batch.image.text.\(UUID().uuidString)"))
+
+        ClipPasteboardWriter.write(entries, to: pasteboard)
+
+        XCTAssertEqual(pasteboard.string(forType: .string), "alpha\nhttps://cmd.local/test")
+        XCTAssertNotNil(pasteboard.data(forType: NSPasteboard.PasteboardType("public.html")))
+        XCTAssertNotNil(pasteboard.data(forType: NSPasteboard.PasteboardType("com.apple.rtfd")))
+        XCTAssertEqual(pasteboard.pasteboardItems?.count, 1)
+    }
+
     func test_batchDragWritersReturnPayload() throws {
         let writers = ClipPasteboardWriter.dragPasteboardWriters(for: [
             textEntry("alpha"),
@@ -65,9 +85,7 @@ final class ClipPasteboardWriterTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("cmd.tests.drag.cache.\(UUID().uuidString)", isDirectory: true)
         let cache = DragPasteboardPayloadCache(directory: directory)
-        let data = Data(base64Encoded: """
-        iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
-        """)!
+        let data = Self.onePixelPNG
         let entry = imageEntry(data)
         let payload = cache.imagePayload(for: entry)
 

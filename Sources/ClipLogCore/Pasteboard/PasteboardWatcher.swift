@@ -905,7 +905,8 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 textCount: session.textCount,
                 imageCount: session.imageCount,
                 imageByteCount: session.imageByteCount,
-                expiresAt: session.expiresAt
+                expiresAt: session.expiresAt,
+                visualItems: visualItems(for: session)
             )
         } else {
             snapshot = AppendSessionSnapshot(
@@ -916,13 +917,38 @@ public final class PasteboardWatcher: @unchecked Sendable {
                 textCount: 0,
                 imageCount: 0,
                 imageByteCount: 0,
-                expiresAt: nil
+                expiresAt: nil,
+                visualItems: []
             )
         }
 
         DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .cmdAppendSessionChanged, object: snapshot)
+            NotificationCenter.default.post(
+                name: .cmdAppendSessionChanged,
+                object: snapshot,
+                userInfo: ["watcher": self]
+            )
         }
+    }
+
+    private func visualItems(for session: AppendSession) -> [AppendSessionVisualItem] {
+        session.clips.suffix(5).map { clip in
+            switch clip {
+            case .text(let value):
+                return AppendSessionVisualItem(
+                    kind: Self.isEmailLike(value) ? .email : .text,
+                    imageData: nil
+                )
+            case .image(let data):
+                return AppendSessionVisualItem(kind: .image, imageData: data)
+            }
+        }
+    }
+
+    private static func isEmailLike(_ text: String) -> Bool {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { return false }
+        return trimmed.range(of: #"^[^@\s]+@[^@\s]+\.[^@\s]+$"#, options: .regularExpression) != nil
     }
 
     // MARK: - Entry construction
@@ -1502,6 +1528,7 @@ public struct AppendSessionSnapshot: Sendable {
     public let imageCount: Int
     public let imageByteCount: Int
     public let expiresAt: Date?
+    public let visualItems: [AppendSessionVisualItem]
 
     public var hasText: Bool {
         textCount > 0
@@ -1519,7 +1546,8 @@ public struct AppendSessionSnapshot: Sendable {
         textCount: Int = 0,
         imageCount: Int = 0,
         imageByteCount: Int = 0,
-        expiresAt: Date? = nil
+        expiresAt: Date? = nil,
+        visualItems: [AppendSessionVisualItem] = []
     ) {
         self.isActive = isActive
         self.itemCount = itemCount
@@ -1529,7 +1557,24 @@ public struct AppendSessionSnapshot: Sendable {
         self.imageCount = imageCount
         self.imageByteCount = imageByteCount
         self.expiresAt = expiresAt
+        self.visualItems = visualItems
     }
+}
+
+public struct AppendSessionVisualItem: Sendable, Equatable {
+    public let kind: AppendSessionVisualKind
+    public let imageData: Data?
+
+    public init(kind: AppendSessionVisualKind, imageData: Data? = nil) {
+        self.kind = kind
+        self.imageData = imageData
+    }
+}
+
+public enum AppendSessionVisualKind: String, Sendable {
+    case text
+    case email
+    case image
 }
 
 public extension Notification.Name {

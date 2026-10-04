@@ -320,7 +320,7 @@ public final class HUDPanel {
         currentSlots = Array(slots.prefix(Layout.maxEntries))
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
-        selectedDisplayIndex = currentSlots.isEmpty ? nil : 0
+        selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         filterBadge.isHidden = true
@@ -921,7 +921,7 @@ public final class HUDPanel {
     }
 
     private func refreshRowsForFilter() {
-        selectedDisplayIndex = displayedIndices().isEmpty ? nil : 0
+        selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         rebuildRows()
@@ -1042,11 +1042,9 @@ public final class HUDPanel {
 
         if modifiers.contains(.shift) {
             HUDHaptics.selectionChanged()
-            let anchor = multiSelectionAnchorDisplayIndex ?? selectedDisplayIndex ?? displayIndex
-            let lower = min(anchor, displayIndex)
-            let upper = max(anchor, displayIndex)
-            multiSelectedOriginalIndices = Set(visibleIndices[lower...upper])
+            multiSelectedOriginalIndices = []
             selectedDisplayIndex = displayIndex
+            multiSelectionAnchorDisplayIndex = displayIndex
             updateSelection()
             return
         }
@@ -1058,11 +1056,12 @@ public final class HUDPanel {
             }
             if multiSelectedOriginalIndices.contains(index) {
                 multiSelectedOriginalIndices.remove(index)
+                selectedDisplayIndex = visibleIndices.firstIndex { multiSelectedOriginalIndices.contains($0) } ?? displayIndex
             } else {
                 multiSelectedOriginalIndices.insert(index)
+                selectedDisplayIndex = displayIndex
             }
-            selectedDisplayIndex = displayIndex
-            multiSelectionAnchorDisplayIndex = displayIndex
+            multiSelectionAnchorDisplayIndex = selectedDisplayIndex
             updateSelection()
             return
         }
@@ -1747,6 +1746,7 @@ private final class HUDRowView: NSView {
     private let timestampLabel = NSTextField(labelWithString: "")
     private let typeLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton()
+    private let thumbnailView = NSImageView()
 
     private var entry: ClipEntry?
     private var index: Int?
@@ -1766,6 +1766,7 @@ private final class HUDRowView: NSView {
     private var cachedStackSignature: String?
     private var activeDragEntryCount = 0
     private var activeDragWriterCount = 0
+    private var activeThumbnailRequest: HUDThumbnailCache.Request?
 
     var originalIndex: Int? {
         index
@@ -1805,6 +1806,12 @@ private final class HUDRowView: NSView {
         appIconView.wantsLayer = true
         appIconView.layer?.masksToBounds = true
 
+        thumbnailView.imageScaling = .scaleProportionallyUpOrDown
+        thumbnailView.wantsLayer = true
+        thumbnailView.layer?.masksToBounds = true
+        thumbnailView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        thumbnailView.isHidden = true
+
         appNameLabel.textColor = .white
         appNameLabel.lineBreakMode = .byTruncatingTail
 
@@ -1826,7 +1833,7 @@ private final class HUDRowView: NSView {
         copyButton.action = #selector(copyTapped)
         copyButton.wantsLayer = true
 
-        [appIconView, appNameLabel, previewLabel, timestampLabel, typeLabel, copyButton].forEach {
+        [appIconView, thumbnailView, appNameLabel, previewLabel, timestampLabel, typeLabel, copyButton].forEach {
             addSubview($0)
         }
         applySizeMetrics()
@@ -1846,6 +1853,7 @@ private final class HUDRowView: NSView {
         typeLabel.stringValue = entry.isSensitive ? "SENSITIVE" : CmdVisualStyle.label(for: entry.contentType, uppercase: true)
         copyButton.isHidden = false
         resetCopyButton()
+        configureThumbnail(for: entry)
         buildDragCache(for: entry)
 
         highlighted = true
@@ -1863,6 +1871,7 @@ private final class HUDRowView: NSView {
         timestampLabel.stringValue = ""
         typeLabel.stringValue = ""
         copyButton.isHidden = true
+        clearThumbnail()
         clearDragCache()
         highlighted = true
         applyChrome()
@@ -1896,6 +1905,8 @@ private final class HUDRowView: NSView {
         let left = scaled(16)
         let right = scaled(14)
         let iconSize: CGFloat = isEmptyRow ? 0 : scaled(46)
+        let thumbnailSize = NSSize(width: scaled(72), height: scaled(52))
+        let thumbnailGap: CGFloat = thumbnailView.isHidden ? 0 : scaled(14)
         let buttonSize: CGFloat = copyButton.isHidden ? 0 : scaled(30)
         let timeWidth: CGFloat = timestampLabel.stringValue.isEmpty ? 0 : scaled(76)
 
@@ -1906,7 +1917,17 @@ private final class HUDRowView: NSView {
             height: iconSize
         )
 
-        let textX = isEmptyRow ? left : left + iconSize + scaled(14)
+        if !thumbnailView.isHidden {
+            thumbnailView.frame = NSRect(
+                x: left + iconSize + scaled(12),
+                y: (bounds.height - thumbnailSize.height) / 2,
+                width: thumbnailSize.width,
+                height: thumbnailSize.height
+            )
+        }
+
+        let thumbnailWidth = thumbnailView.isHidden ? 0 : thumbnailSize.width + thumbnailGap
+        let textX = isEmptyRow ? left : left + iconSize + scaled(14) + thumbnailWidth
         let trailingControls = timeWidth + buttonSize + (buttonSize > 0 ? scaled(12) : 0) + scaled(8)
         let textWidth = max(80, bounds.width - textX - right - trailingControls)
 
@@ -2088,6 +2109,7 @@ private final class HUDRowView: NSView {
         layer?.cornerRadius = scaled(CmdVisualStyle.cardCornerRadius)
         appIconView.layer?.cornerRadius = scaled(12)
         copyButton.layer?.cornerRadius = scaled(8)
+        thumbnailView.layer?.cornerRadius = scaled(8)
         appNameLabel.font = .systemFont(ofSize: scaled(14), weight: .bold)
         previewLabel.font = .systemFont(ofSize: scaled(13), weight: .medium)
         timestampLabel.font = .systemFont(ofSize: scaled(12), weight: .bold)
@@ -2142,6 +2164,27 @@ private final class HUDRowView: NSView {
         cachedDragImage = nil
         cachedDragWriters = []
         updateStackDragCache(entries: [], signature: nil)
+    }
+
+    private func configureThumbnail(for entry: ClipEntry) {
+        clearThumbnail()
+        let size = NSSize(width: scaled(72), height: scaled(52))
+        activeThumbnailRequest = HUDThumbnailCache.shared.request(entry: entry, size: size) { [weak self] request, image in
+            guard let self,
+                  self.activeThumbnailRequest == request,
+                  self.entry?.id == request.entryID
+            else { return }
+            self.thumbnailView.image = image
+            self.thumbnailView.isHidden = image == nil
+            self.needsLayout = true
+        }
+        thumbnailView.isHidden = activeThumbnailRequest == nil
+    }
+
+    private func clearThumbnail() {
+        activeThumbnailRequest = nil
+        thumbnailView.image = nil
+        thumbnailView.isHidden = true
     }
 
     func updateStackDragCache(entries: [ClipEntry], signature: String?) {
