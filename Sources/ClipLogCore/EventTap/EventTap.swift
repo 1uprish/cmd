@@ -778,7 +778,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
         }
 
         // Return → paste the selected visible entry.
-        if !cmd, !opt, !ctrl, vk == Self.kVK_Return || vk == Self.kVK_KeypadEnter {
+        if !cmd, !opt, !ctrl, (vk == Self.kVK_Return || vk == Self.kVK_KeypadEnter) {
             DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_return", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDConfirmSelection?(sessionID) }
             DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_return", details: ["success": "true"])
