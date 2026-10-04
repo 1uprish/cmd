@@ -32,6 +32,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
 
     private(set) var entry: ClipEntry?
     private var isHovered = false
+    private var isPressed = false
     private var dragStarted = false
     private var mouseDownLocation = NSPoint.zero
 
@@ -476,6 +477,20 @@ final class ClipBookCardItem: NSCollectionViewItem {
     override func mouseExited(with event: NSEvent) {
         isHovered = false
         applyHoverState(false)
+        if isPressed { applyPressState(false) }
+    }
+
+    // Press feedback lives on pointer-down (instant), not on release.
+    private func applyPressState(_ pressed: Bool) {
+        isPressed = pressed
+        NSAnimationContext.runAnimationGroup { ctx in
+            ctx.duration = AccessibilityEnvironment.shared.motionDuration(0.10)
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            view.layer?.transform = pressed
+                ? CATransform3DMakeScale(0.985, 0.985, 1)
+                : CATransform3DIdentity
+            view.layer?.shadowRadius = pressed ? 6 : (isHovered ? 12 : 8)
+        }
     }
 
     private func applyHoverState(_ hovered: Bool) {
@@ -511,10 +526,16 @@ final class ClipBookCardItem: NSCollectionViewItem {
     override func mouseDown(with event: NSEvent) {
         dragStarted = false
         mouseDownLocation = view.convert(event.locationInWindow, from: nil)
+        applyPressState(true)
         super.mouseDown(with: event)
         if event.clickCount == 2, let entry {
             onPaste?(entry)
         }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isPressed { applyPressState(false) }
+        super.mouseUp(with: event)
     }
 
     override func mouseDragged(with event: NSEvent) {
@@ -524,6 +545,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
         let dy = point.y - mouseDownLocation.y
         guard dx * dx + dy * dy > 16 else { return }
         dragStarted = true
+        applyPressState(false)
         beginDrag(from: event)
     }
 
