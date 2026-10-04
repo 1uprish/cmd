@@ -878,6 +878,7 @@ public final class HUDPanel {
     // MARK: - Rows
 
     private func rebuildRows() {
+        updateHintText()
         rowViews.forEach { $0.removeFromSuperview() }
         rowViews.removeAll()
 
@@ -966,7 +967,7 @@ public final class HUDPanel {
         if currentSlots.isEmpty {
             subtitleLabel.stringValue = "Recent clipboard"
         } else if filterText.isEmpty {
-            subtitleLabel.stringValue = "Type to filter · ↑↓ select · Return paste · Esc close"
+            subtitleLabel.stringValue = "Type to filter · ↑↓ select · ⌘ click multi · Return paste"
         } else {
             let count = displayedIndices().count
             subtitleLabel.stringValue = "\(count) match\(count == 1 ? "" : "es") · Backspace edit · Esc clear"
