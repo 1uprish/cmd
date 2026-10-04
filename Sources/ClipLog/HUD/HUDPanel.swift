@@ -1768,6 +1768,7 @@ private final class HUDRowView: NSView {
     private let typeLabel = NSTextField(labelWithString: "")
     private let copyButton = NSButton()
     private let thumbnailView = NSImageView()
+    private let cardBlur = NSVisualEffectView()
 
     private var entry: ClipEntry?
     private var index: Int?
@@ -1822,6 +1823,13 @@ private final class HUDRowView: NSView {
         wantsLayer = true
         layer?.borderWidth = 0.5
         layer?.masksToBounds = true
+
+        cardBlur.material = .hudWindow
+        cardBlur.blendingMode = .behindWindow
+        cardBlur.state = .active
+        cardBlur.wantsLayer = true
+        cardBlur.layer?.masksToBounds = true
+        addSubview(cardBlur)
 
         appIconView.imageScaling = .scaleProportionallyUpOrDown
         appIconView.wantsLayer = true
@@ -1922,6 +1930,8 @@ private final class HUDRowView: NSView {
 
     override func layout() {
         super.layout()
+
+        cardBlur.frame = bounds
 
         let left = scaled(16)
         let right = scaled(14)
@@ -2107,15 +2117,23 @@ private final class HUDRowView: NSView {
     private func applyChrome() {
         alphaValue = highlighted ? 1 : 0.34
 
+        let accessibility = AccessibilityEnvironment.shared
+        let solid = accessibility.shouldReduceTransparency
+        cardBlur.isHidden = solid
+        // Over the material, keep the tint translucent so the blur reads
+        // through; when transparency is reduced, fall back to an opaque fill.
+        let tint: CGFloat = solid ? 1.0 : 0.62
+
         let background: NSColor
         if isSelected && highlighted {
-            background = NSColor(calibratedWhite: 0.24, alpha: min(1.0, cardOpacity + 0.08))
+            background = NSColor(calibratedWhite: 0.24, alpha: min(1.0, cardOpacity * tint + 0.08))
         } else if hovering && highlighted {
-            background = NSColor(calibratedWhite: 0.20, alpha: min(1.0, cardOpacity + 0.04))
+            background = NSColor(calibratedWhite: 0.20, alpha: min(1.0, cardOpacity * tint + 0.04))
         } else {
-            background = NSColor(calibratedWhite: 0.15, alpha: cardOpacity)
+            background = NSColor(calibratedWhite: 0.15, alpha: cardOpacity * tint)
         }
         layer?.backgroundColor = background.cgColor
+        layer?.borderWidth = accessibility.shouldIncreaseContrast ? 1.0 : 0.5
         layer?.borderColor = (isSelected && highlighted
             ? CmdVisualStyle.cardBorderSelected
             : (hovering && highlighted ? CmdVisualStyle.cardBorderHover : CmdVisualStyle.cardBorder)
@@ -2128,6 +2146,7 @@ private final class HUDRowView: NSView {
 
     private func applySizeMetrics() {
         layer?.cornerRadius = scaled(CmdVisualStyle.cardCornerRadius)
+        cardBlur.layer?.cornerRadius = scaled(CmdVisualStyle.cardCornerRadius)
         appIconView.layer?.cornerRadius = scaled(12)
         copyButton.layer?.cornerRadius = scaled(8)
         thumbnailView.layer?.cornerRadius = scaled(8)
