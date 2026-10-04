@@ -17,8 +17,10 @@ public final class EmbeddingService: Sendable {
         // Images, files, and colors don't carry meaningful prose — skip them.
         guard [.text, .url, .code, .rich].contains(entry.contentType) else { return }
 
-        // Build the text to embed: preview content + source app + optional OCR text.
-        var parts = [entry.previewText, entry.sourceAppName]
+        // Build the text to embed from the full stored text, not the truncated
+        // preview, so long clips are represented by their whole content.
+        let body = String(data: entry.contentData, encoding: .utf8) ?? entry.previewText
+        var parts = [body, entry.sourceAppName]
         if let ocr = entry.ocrText { parts.append(ocr) }
         let text = parts.joined(separator: " ")
 
