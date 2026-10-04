@@ -30,7 +30,8 @@ struct FeaturesView: View {
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("cmd")
-                        .font(.system(size: 25, weight: .bold))
+                        .font(.system(size: 25, weight: .semibold))
+                        .tracking(-0.6)
                     Text("Clipboard history for macOS")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.secondary)
@@ -51,7 +52,7 @@ struct FeaturesView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 24)
                 Text(section.title)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 16, weight: .semibold))
             }
 
             VStack(alignment: .leading, spacing: 0) {

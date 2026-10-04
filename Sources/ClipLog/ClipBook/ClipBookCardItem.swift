@@ -131,27 +131,27 @@ final class ClipBookCardItem: NSCollectionViewItem {
         cardEffect.addSubview(appIconView)
 
         // ── App name (bold 13pt) ──────────────────────────────────────────
-        appNameLabel.font      = .systemFont(ofSize: 14, weight: .bold)
+        appNameLabel.font      = .systemFont(ofSize: 14, weight: .semibold)
         appNameLabel.textColor = .labelColor
         appNameLabel.lineBreakMode = .byTruncatingTail
         appNameLabel.translatesAutoresizingMaskIntoConstraints = false
         cardEffect.addSubview(appNameLabel)
 
         // ── Subtitle / domain (11pt tertiary) ────────────────────────────
-        subtitleLabel.font      = .systemFont(ofSize: 11, weight: .semibold)
+        subtitleLabel.font      = .systemFont(ofSize: 11, weight: .regular)
         subtitleLabel.textColor = .tertiaryLabelColor
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
         cardEffect.addSubview(subtitleLabel)
 
         // ── Timestamp (11pt secondary, pinned top-right) ──────────────────
-        timestampLabel.font      = .systemFont(ofSize: 11, weight: .semibold)
+        timestampLabel.font      = .systemFont(ofSize: 11, weight: .regular)
         timestampLabel.textColor = .secondaryLabelColor
         timestampLabel.translatesAutoresizingMaskIntoConstraints = false
         cardEffect.addSubview(timestampLabel)
 
         // ── Preview label (13pt, max 2 lines) ─────────────────────────────
-        previewLabel.font              = .systemFont(ofSize: 13, weight: .medium)
+        previewLabel.font              = .systemFont(ofSize: 13, weight: .regular)
         previewLabel.textColor         = .labelColor
         previewLabel.maximumNumberOfLines = 2
         previewLabel.lineBreakMode     = .byTruncatingTail

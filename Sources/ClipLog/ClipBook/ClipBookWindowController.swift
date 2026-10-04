@@ -149,7 +149,13 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
 
         // ── Title ─────────────────────────────────────────────────────
         titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.font        = .systemFont(ofSize: 19, weight: .bold)
+        titleLabel.attributedStringValue = NSAttributedString(
+            string: "cmd",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 19, weight: .semibold),
+                .kern: -0.4,
+            ]
+        )
         titleLabel.textColor   = .labelColor
         titleLabel.isEditable  = false
         titleLabel.isBordered  = false

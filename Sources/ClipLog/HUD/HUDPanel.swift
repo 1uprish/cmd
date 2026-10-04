@@ -243,7 +243,15 @@ public final class HUDPanel {
         headerScrim.layer?.shadowRadius = 18
         headerScrim.layer?.shadowOffset = CGSize(width: 0, height: -4)
 
-        titleLabel.font = .systemFont(ofSize: 19, weight: .heavy)
+        // Display-size title: slightly negative tracking, semibold rather than
+        // heavy so hierarchy comes from size + weight, not weight alone.
+        titleLabel.attributedStringValue = NSAttributedString(
+            string: "cmd",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 19, weight: .semibold),
+                .kern: -0.4,
+            ]
+        )
         titleLabel.textColor = .white
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.wantsLayer = true
@@ -2159,10 +2167,10 @@ private final class HUDRowView: NSView {
         appIconView.layer?.cornerRadius = scaled(12)
         copyButton.layer?.cornerRadius = scaled(8)
         thumbnailView.layer?.cornerRadius = scaled(8)
-        appNameLabel.font = .systemFont(ofSize: scaled(14), weight: .bold)
-        previewLabel.font = .systemFont(ofSize: scaled(13), weight: .medium)
-        timestampLabel.font = .systemFont(ofSize: scaled(12), weight: .bold)
-        typeLabel.font = .systemFont(ofSize: scaled(11), weight: .bold)
+        appNameLabel.font = .systemFont(ofSize: scaled(14), weight: .semibold)
+        previewLabel.font = .systemFont(ofSize: scaled(13), weight: .regular)
+        timestampLabel.font = .systemFont(ofSize: scaled(12), weight: .regular)
+        typeLabel.font = .systemFont(ofSize: scaled(11), weight: .medium)
     }
 
     private func scaled(_ value: CGFloat) -> CGFloat {
