@@ -8,7 +8,6 @@ final class TapController {
     private var clipStore: ClipStore?
     private var slotManager: SlotManager?
     private var menuBarController: MenuBarController?
-    private var cursorPiPController: CursorPiPController?
     private var sensitivePurgeTimer: Timer?
     private var settingsCancellables = Set<AnyCancellable>()
     private var appendSessionObserver: NSObjectProtocol?
@@ -29,8 +28,6 @@ final class TapController {
             pasteboardWatcher.updateImageOCREnabled(false)
             eventTap.updateHoldThreshold(TimeInterval(settings.holdThresholdMs) / 1000.0)
             observeSettings(settings)
-            let cursorPiP = CursorPiPController()
-            cursorPiPController = cursorPiP
 
             purgeExpiredHistoryIfNeeded(in: store, retentionDays: settings.retentionDays)
             purgeExpiredSensitiveItems(in: store)
@@ -39,7 +36,6 @@ final class TapController {
             let mbc = MenuBarController(
                 store: store,
                 slots: slots,
-                cursorPiPController: cursorPiP,
                 diagnosticsSnapshotProvider: { [weak self] in
                     var snapshot = self?.eventTap.diagnosticsSnapshot() ?? [:]
                     for (key, value) in HUDPanel.shared.diagnosticsSnapshot(reason: "debug_report") {
@@ -64,9 +60,6 @@ final class TapController {
             pasteboardWatcher.onNewEntry = { [weak self, weak slots, weak mbc] entry in
                 slots?.ingest(entry)
                 mbc?.notifyNewEntry()
-                DispatchQueue.main.async {
-                    cursorPiP.handleClipboardEntry(entry)
-                }
                 if let store = self?.clipStore {
                     self?.purgeExpiredSensitiveItems(in: store)
                 }

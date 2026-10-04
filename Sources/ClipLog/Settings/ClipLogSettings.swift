@@ -17,25 +17,9 @@ public final class ClipLogSettings: ObservableObject {
         static let hudOpacity          = "hudOpacity"
         static let hudSizeScale        = "hudSizeScale"
         static let hudAnimationStyle   = "hudAnimationStyle"
-        static let onboardingCompleted = "onboardingCompleted"
         static let remoteDiagnosticsEnabled = "remoteDiagnosticsEnabled"
         static let remoteDiagnosticsEndpoint = "remoteDiagnosticsEndpoint"
         static let remoteDiagnosticsToken = "remoteDiagnosticsToken"
-        static let cursorPiPEnabled = "cursorPiPEnabled"
-        static let cursorPiPAutoSuggest = "cursorPiPAutoSuggest"
-        static let cursorPiPFollowCursor = "cursorPiPFollowCursor"
-        static let cursorPiPPinned = "cursorPiPPinned"
-        static let cursorPiPOffsetX = "cursorPiPOffsetX"
-        static let cursorPiPOffsetY = "cursorPiPOffsetY"
-        static let cursorPiPOriginX = "cursorPiPOriginX"
-        static let cursorPiPOriginY = "cursorPiPOriginY"
-        static let cursorPiPWidth = "cursorPiPWidth"
-        static let cursorPiPHeight = "cursorPiPHeight"
-        static let cursorPiPLastURL = "cursorPiPLastURL"
-        static let cursorPiPCornerRadius = "cursorPiPCornerRadius"
-        static let cursorPiPEdgeBlur = "cursorPiPEdgeBlur"
-        static let cursorPiPOpacity = "cursorPiPOpacity"
-        static let cursorPiPChromeVisible = "cursorPiPChromeVisible"
     }
 
     @Published public var holdThresholdMs: Int {
@@ -154,13 +138,6 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
-    @Published public var onboardingCompleted: Bool {
-        didSet {
-            logSettingChange(name: Keys.onboardingCompleted, oldValue: "\(oldValue)", newValue: "\(onboardingCompleted)")
-            UserDefaults.standard.set(onboardingCompleted, forKey: Keys.onboardingCompleted)
-        }
-    }
-
     @Published public var remoteDiagnosticsEnabled: Bool {
         didSet {
             logSettingChange(
@@ -196,118 +173,6 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
-    @Published public var cursorPiPEnabled: Bool {
-        didSet {
-            logSettingChange(name: Keys.cursorPiPEnabled, oldValue: "\(oldValue)", newValue: "\(cursorPiPEnabled)")
-            UserDefaults.standard.set(cursorPiPEnabled, forKey: Keys.cursorPiPEnabled)
-        }
-    }
-
-    @Published public var cursorPiPAutoSuggest: Bool {
-        didSet {
-            logSettingChange(name: Keys.cursorPiPAutoSuggest, oldValue: "\(oldValue)", newValue: "\(cursorPiPAutoSuggest)")
-            UserDefaults.standard.set(cursorPiPAutoSuggest, forKey: Keys.cursorPiPAutoSuggest)
-        }
-    }
-
-    @Published public var cursorPiPFollowCursor: Bool {
-        didSet {
-            logSettingChange(name: Keys.cursorPiPFollowCursor, oldValue: "\(oldValue)", newValue: "\(cursorPiPFollowCursor)")
-            UserDefaults.standard.set(cursorPiPFollowCursor, forKey: Keys.cursorPiPFollowCursor)
-        }
-    }
-
-    @Published public var cursorPiPPinned: Bool {
-        didSet {
-            logSettingChange(name: Keys.cursorPiPPinned, oldValue: "\(oldValue)", newValue: "\(cursorPiPPinned)")
-            UserDefaults.standard.set(cursorPiPPinned, forKey: Keys.cursorPiPPinned)
-        }
-    }
-
-    @Published public var cursorPiPOffsetX: Double {
-        didSet {
-            let clamped = cursorPiPOffsetX.clamped(to: -480...480)
-            logSettingChange(name: Keys.cursorPiPOffsetX, oldValue: "\(oldValue)", newValue: "\(clamped)", normalized: clamped != cursorPiPOffsetX)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOffsetX)
-            if clamped != cursorPiPOffsetX { cursorPiPOffsetX = clamped }
-        }
-    }
-
-    @Published public var cursorPiPOffsetY: Double {
-        didSet {
-            let clamped = cursorPiPOffsetY.clamped(to: -480...480)
-            logSettingChange(name: Keys.cursorPiPOffsetY, oldValue: "\(oldValue)", newValue: "\(clamped)", normalized: clamped != cursorPiPOffsetY)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOffsetY)
-            if clamped != cursorPiPOffsetY { cursorPiPOffsetY = clamped }
-        }
-    }
-
-    @Published public var cursorPiPOriginX: Double {
-        didSet { UserDefaults.standard.set(cursorPiPOriginX, forKey: Keys.cursorPiPOriginX) }
-    }
-
-    @Published public var cursorPiPOriginY: Double {
-        didSet { UserDefaults.standard.set(cursorPiPOriginY, forKey: Keys.cursorPiPOriginY) }
-    }
-
-    @Published public var cursorPiPWidth: Double {
-        didSet {
-            let clamped = cursorPiPWidth.clamped(to: 100...1280)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPWidth)
-            if clamped != cursorPiPWidth { cursorPiPWidth = clamped }
-        }
-    }
-
-    @Published public var cursorPiPHeight: Double {
-        didSet {
-            let clamped = cursorPiPHeight.clamped(to: 56...720)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPHeight)
-            if clamped != cursorPiPHeight { cursorPiPHeight = clamped }
-        }
-    }
-
-    @Published public var cursorPiPLastURL: String {
-        didSet {
-            logSettingChange(
-                name: Keys.cursorPiPLastURL,
-                oldValue: oldValue.isEmpty ? "empty" : "present",
-                newValue: cursorPiPLastURL.isEmpty ? "empty" : "present",
-                extra: ["valueKind": "presence"]
-            )
-            UserDefaults.standard.set(cursorPiPLastURL, forKey: Keys.cursorPiPLastURL)
-        }
-    }
-
-    @Published public var cursorPiPCornerRadius: Double {
-        didSet {
-            let clamped = cursorPiPCornerRadius.clamped(to: 0...140)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPCornerRadius)
-            if clamped != cursorPiPCornerRadius { cursorPiPCornerRadius = clamped }
-        }
-    }
-
-    @Published public var cursorPiPEdgeBlur: Double {
-        didSet {
-            let clamped = cursorPiPEdgeBlur.clamped(to: 0...48)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPEdgeBlur)
-            if clamped != cursorPiPEdgeBlur { cursorPiPEdgeBlur = clamped }
-        }
-    }
-
-    @Published public var cursorPiPOpacity: Double {
-        didSet {
-            let clamped = cursorPiPOpacity.clamped(to: 0.55...1.0)
-            UserDefaults.standard.set(clamped, forKey: Keys.cursorPiPOpacity)
-            if clamped != cursorPiPOpacity { cursorPiPOpacity = clamped }
-        }
-    }
-
-    @Published public var cursorPiPChromeVisible: Bool {
-        didSet {
-            UserDefaults.standard.set(cursorPiPChromeVisible, forKey: Keys.cursorPiPChromeVisible)
-        }
-    }
-
     private init() {
         let defaults = UserDefaults.standard
 
@@ -321,25 +186,9 @@ public final class ClipLogSettings: ObservableObject {
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
-            Keys.onboardingCompleted: false,
             Keys.remoteDiagnosticsEnabled: false,
             Keys.remoteDiagnosticsEndpoint: "",
             Keys.remoteDiagnosticsToken: "",
-            Keys.cursorPiPEnabled: true,
-            Keys.cursorPiPAutoSuggest: true,
-            Keys.cursorPiPFollowCursor: false,
-            Keys.cursorPiPPinned: true,
-            Keys.cursorPiPOffsetX: 24.0,
-            Keys.cursorPiPOffsetY: -24.0,
-            Keys.cursorPiPOriginX: 0.0,
-            Keys.cursorPiPOriginY: 0.0,
-            Keys.cursorPiPWidth: 480.0,
-            Keys.cursorPiPHeight: 270.0,
-            Keys.cursorPiPLastURL: "",
-            Keys.cursorPiPCornerRadius: 22.0,
-            Keys.cursorPiPEdgeBlur: 8.0,
-            Keys.cursorPiPOpacity: 1.0,
-            Keys.cursorPiPChromeVisible: true,
         ])
 
         holdThresholdMs     = defaults.integer(forKey: Keys.holdThresholdMs)
@@ -351,25 +200,9 @@ public final class ClipLogSettings: ObservableObject {
         hudOpacity          = defaults.double(forKey: Keys.hudOpacity)
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
         hudAnimationStyle   = defaults.string(forKey: Keys.hudAnimationStyle) ?? "magnetic"
-        onboardingCompleted = defaults.bool(forKey: Keys.onboardingCompleted)
         remoteDiagnosticsEnabled = defaults.bool(forKey: Keys.remoteDiagnosticsEnabled)
         remoteDiagnosticsEndpoint = defaults.string(forKey: Keys.remoteDiagnosticsEndpoint) ?? ""
         remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
-        cursorPiPEnabled = defaults.bool(forKey: Keys.cursorPiPEnabled)
-        cursorPiPAutoSuggest = defaults.bool(forKey: Keys.cursorPiPAutoSuggest)
-        cursorPiPFollowCursor = defaults.bool(forKey: Keys.cursorPiPFollowCursor)
-        cursorPiPPinned = defaults.bool(forKey: Keys.cursorPiPPinned)
-        cursorPiPOffsetX = defaults.double(forKey: Keys.cursorPiPOffsetX)
-        cursorPiPOffsetY = defaults.double(forKey: Keys.cursorPiPOffsetY)
-        cursorPiPOriginX = defaults.double(forKey: Keys.cursorPiPOriginX)
-        cursorPiPOriginY = defaults.double(forKey: Keys.cursorPiPOriginY)
-        cursorPiPWidth = defaults.double(forKey: Keys.cursorPiPWidth)
-        cursorPiPHeight = defaults.double(forKey: Keys.cursorPiPHeight)
-        cursorPiPLastURL = defaults.string(forKey: Keys.cursorPiPLastURL) ?? ""
-        cursorPiPCornerRadius = defaults.double(forKey: Keys.cursorPiPCornerRadius)
-        cursorPiPEdgeBlur = defaults.double(forKey: Keys.cursorPiPEdgeBlur)
-        cursorPiPOpacity = defaults.double(forKey: Keys.cursorPiPOpacity)
-        cursorPiPChromeVisible = defaults.bool(forKey: Keys.cursorPiPChromeVisible)
     }
 
     private func logSettingChange(

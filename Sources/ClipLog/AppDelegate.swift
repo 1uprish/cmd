@@ -1,17 +1,16 @@
 import AppKit
 import ClipLogCore
+import CoreGraphics
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var tapController: TapController?
-    private var onboardingWindowController: OnboardingWindowController?
-    private var onboardingObserver: (any NSObjectProtocol)?
     private var isPollingForAccessibility = false
     private var eventTapIsRunning = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Touch ClipLogSettings.shared first so defaults are registered before
         // we check them inside syncIfNeeded().
-        let settings = ClipLogSettings.shared
+        _ = ClipLogSettings.shared
         DiagnosticsLogbook.shared.record("app_launch", category: "lifecycle")
         AppDiagnosticsMonitor.shared.start()
         // Keep the LaunchAgent plist current (handles rebuild / app move).
@@ -23,46 +22,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Menu bar appears immediately — Accessibility not required for this.
         tc.startUI()
 
-        // Onboarding is temporarily disabled while the first-run experience is redesigned.
-        settings.onboardingCompleted = true
-        checkAndStartEventTap()
+        startStartupPermissionFlow()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
         DiagnosticsLogbook.shared.record("app_terminate", category: "lifecycle")
         AppDiagnosticsMonitor.shared.stop()
-        if let onboardingObserver {
-            NotificationCenter.default.removeObserver(onboardingObserver)
-        }
         tapController?.stop()
-    }
-
-    // MARK: - Onboarding
-
-    private func showOnboarding() {
-        if let existing = onboardingWindowController,
-           existing.window?.isVisible == true {
-            existing.window?.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-
-        let controller = OnboardingWindowController(
-            onRequestAccessibility: { [weak self] in
-                self?.showAccessibilityPrompt()
-                self?.pollForAccessibility()
-                self?.openAccessibilitySettings()
-            },
-            onFinish: { [weak self] in
-                ClipLogSettings.shared.onboardingCompleted = true
-                self?.onboardingWindowController?.close()
-                self?.onboardingWindowController = nil
-                self?.checkAndStartEventTap()
-            }
-        )
-        onboardingWindowController = controller
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
 
     // MARK: - Accessibility bootstrap
@@ -72,6 +38,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     ///  2. Not trusted yet → show system prompt, poll until granted.
     ///  3. Trusted (TCC says yes) but tap creation fails → stale TCC entry
     ///     from a previous build's code-signature; reset + re-prompt.
+    private func startStartupPermissionFlow() {
+        DiagnosticsLogbook.shared.record("startup_permission_flow_started", category: "permissions")
+        checkAndStartEventTap()
+    }
+
     private func checkAndStartEventTap() {
         if AXIsProcessTrusted() {
             DiagnosticsLogbook.shared.record("accessibility_trusted", category: "event_tap")
@@ -129,19 +100,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showAccessibilityPrompt() {
         let opts: NSDictionary = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true]
         AXIsProcessTrustedWithOptions(opts)
-    }
-
-    private func openAccessibilitySettings() {
-        let urls = [
-            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
-            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
-        ]
-        for raw in urls {
-            guard let url = URL(string: raw),
-                  NSWorkspace.shared.open(url)
-            else { continue }
-            return
-        }
     }
 
 }
