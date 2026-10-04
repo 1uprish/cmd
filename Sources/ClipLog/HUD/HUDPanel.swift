@@ -1284,16 +1284,25 @@ public final class HUDPanel {
             panel.animator().alphaValue = 1
         }
 
+        // Spring the root bloom from its live presentation transform so a
+        // re-trigger mid-flight continues from where it is instead of snapping.
+        let fromTransform = layer.presentation()?.transform ?? layer.transform
         CATransaction.begin()
-        CATransaction.setAnimationDuration(style.inDuration)
-        CATransaction.setAnimationTimingFunction(style.inTiming)
+        CATransaction.setDisableActions(true)
         layer.transform = CATransform3DIdentity
         CATransaction.commit()
+        let rootSpring = CmdSpring.animation(
+            keyPath: "transform",
+            spec: CmdSpring.standard,
+            from: NSValue(caTransform3D: fromTransform),
+            to: NSValue(caTransform3D: CATransform3DIdentity)
+        )
+        layer.add(rootSpring, forKey: "cmd.hud.root.motion")
 
         animateRowsIn()
 
         let generation = animationGeneration
-        DispatchQueue.main.asyncAfter(deadline: .now() + style.inDuration + 0.03) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + rootSpring.settlingDuration + 0.02) { [weak self] in
             guard let self, self.animationGeneration == generation, self.isVisible else { return }
             self.resetRootLayer()
             self.resetRows()
@@ -1323,12 +1332,24 @@ public final class HUDPanel {
         setCursorAnchorPoint(from: cursor)
         animateRowsOut(to: cursor, selectedOriginalIndex: selectedOriginalIndex)
 
+        let rootSettle: TimeInterval
         if let layer = rootView.layer {
+            let fromTransform = layer.presentation()?.transform ?? layer.transform
+            let target = rootExitTransform(for: style)
             CATransaction.begin()
-            CATransaction.setAnimationDuration(style.outDuration)
-            CATransaction.setAnimationTimingFunction(style.outTiming)
-            layer.transform = rootExitTransform(for: style)
+            CATransaction.setDisableActions(true)
+            layer.transform = target
             CATransaction.commit()
+            let rootSpring = CmdSpring.animation(
+                keyPath: "transform",
+                spec: CmdSpring.standard,
+                from: NSValue(caTransform3D: fromTransform),
+                to: NSValue(caTransform3D: target)
+            )
+            layer.add(rootSpring, forKey: "cmd.hud.root.motion")
+            rootSettle = rootSpring.settlingDuration
+        } else {
+            rootSettle = style.outDuration
         }
 
         NSAnimationContext.runAnimationGroup { context in
@@ -1337,7 +1358,7 @@ public final class HUDPanel {
             panel.animator().alphaValue = 0
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + style.outDuration + 0.02) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + rootSettle + 0.02) { [weak self] in
             guard let self, self.animationGeneration == generation, !self.isVisible else { return }
             self.panel.orderOut(nil)
             self.panel.alphaValue = 1

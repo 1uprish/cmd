@@ -1,5 +1,46 @@
 import AppKit
 import ClipLogCore
+import QuartzCore
+
+// MARK: - Motion tokens
+//
+// Apple-style springs described by damping ratio + response (seconds), not the
+// raw mass/stiffness/damping triplet. `standard` is critically damped and is
+// the default; reserve `momentum` bounce for interactions that carried a
+// gesture's velocity.
+
+enum CmdSpring {
+    struct Spec {
+        let dampingRatio: CGFloat
+        let response: TimeInterval
+    }
+
+    static let standard = Spec(dampingRatio: 1.0, response: 0.34)
+    static let momentum = Spec(dampingRatio: 0.8, response: 0.34)
+
+    /// Builds a `CASpringAnimation` from a spec. Stiffness is derived from the
+    /// response (ω₀ = 2π / response, k = ω₀²), so callers keep thinking in
+    /// response seconds.
+    static func animation(
+        keyPath: String,
+        spec: Spec = standard,
+        from: Any?,
+        to: Any?,
+        initialVelocity: CGFloat = 0
+    ) -> CASpringAnimation {
+        let omega = (2 * CGFloat.pi) / CGFloat(spec.response)
+        let animation = CASpringAnimation(keyPath: keyPath)
+        animation.stiffness = omega * omega
+        animation.mass = 1
+        // ζ = damping / (2·√(k·m))  ⇒  damping = 2·ζ·ω
+        animation.damping = 2 * spec.dampingRatio * omega
+        animation.initialVelocity = initialVelocity
+        animation.fromValue = from
+        animation.toValue = to
+        animation.duration = animation.settlingDuration
+        return animation
+    }
+}
 
 enum CmdVisualStyle {
     static let cardCornerRadius: CGFloat = 18
