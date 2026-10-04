@@ -198,7 +198,7 @@ public final class HUDPanel {
     private var sleepObserver: Any?
     private var spaceObserver: Any?
     private var reduceMotion: Bool {
-        NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        AccessibilityEnvironment.shared.shouldReduceMotion
     }
 
     private struct DragRestoreSnapshot {

@@ -208,23 +208,32 @@ final class AppendSessionPanel {
         }
 
         DiagnosticsLogbook.shared.record("append_indicator_shown", category: "append")
+        let reduceMotion = AccessibilityEnvironment.shared.shouldReduceMotion
         panel.alphaValue = 0
         panel.contentView?.wantsLayer = true
-        panel.contentView?.layer?.transform = CATransform3DMakeScale(0.94, 0.94, 1)
+        panel.contentView?.layer?.transform = reduceMotion
+            ? CATransform3DIdentity
+            : CATransform3DMakeScale(0.94, 0.94, 1)
         panel.orderFrontRegardless()
-        animateContentScale(from: 0.94, to: 1.0, duration: 0.22)
+        if !reduceMotion {
+            animateContentScale(from: 0.94, to: 1.0, duration: 0.22)
+        }
 
-        var frame = panel.frame
-        frame.origin.y -= 5
-        panel.setFrame(frame, display: true)
+        if !reduceMotion {
+            var frame = panel.frame
+            frame.origin.y -= 5
+            panel.setFrame(frame, display: true)
+        }
 
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.22
+            context.duration = reduceMotion ? 0.10 : 0.22
             context.timingFunction = CAMediaTimingFunction(name: .easeOut)
             panel.animator().alphaValue = 1
-            var target = panel.frame
-            target.origin.y += 5
-            panel.animator().setFrame(target, display: true)
+            if !reduceMotion {
+                var target = panel.frame
+                target.origin.y += 5
+                panel.animator().setFrame(target, display: true)
+            }
         }
     }
 
@@ -235,16 +244,21 @@ final class AppendSessionPanel {
         let generation = visibilityGeneration
         previewView.stop()
         DiagnosticsLogbook.shared.record("append_indicator_hidden", category: "append")
+        let reduceMotion = AccessibilityEnvironment.shared.shouldReduceMotion
         panel.contentView?.wantsLayer = true
         panel.contentView?.layer?.removeAllAnimations()
-        animateContentScale(from: 1.0, to: 0.94, duration: 0.16)
+        if !reduceMotion {
+            animateContentScale(from: 1.0, to: 0.94, duration: 0.16)
+        }
         NSAnimationContext.runAnimationGroup { context in
-            context.duration = 0.16
+            context.duration = reduceMotion ? 0.10 : 0.16
             context.timingFunction = CAMediaTimingFunction(name: .easeIn)
             panel.animator().alphaValue = 0
-            var frame = panel.frame
-            frame.origin.y -= 5
-            panel.animator().setFrame(frame, display: true)
+            if !reduceMotion {
+                var frame = panel.frame
+                frame.origin.y -= 5
+                panel.animator().setFrame(frame, display: true)
+            }
         } completionHandler: {
             guard self.visibilityGeneration == generation,
                   !self.latestSnapshot.isActive
@@ -506,6 +520,15 @@ private final class TeleprompterTextView: NSView {
             label.layer?.removeAllAnimations()
             label.frame.origin.x = 0
             scheduleNextSegment(after: 1.25)
+            return
+        }
+
+        // Continuous marquee motion is exactly what reduced-motion users opt out
+        // of. Show the segment truncated and advance without scrolling.
+        guard !AccessibilityEnvironment.shared.shouldReduceMotion else {
+            label.layer?.removeAllAnimations()
+            label.frame.origin.x = 0
+            scheduleNextSegment(after: 1.5)
             return
         }
 

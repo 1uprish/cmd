@@ -506,6 +506,7 @@ private struct HUDTransitionPreview: View {
     let sizeScale: CGFloat
     let replayToken: Int
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var phase: PreviewPhase = .open
     @State private var cycleID = UUID()
 
@@ -830,6 +831,13 @@ private struct HUDTransitionPreview: View {
     }
 
     private func replay() {
+        // Reduced motion: show the settled state instead of looping the transition.
+        guard !reduceMotion else {
+            cycleID = UUID()
+            phase = .open
+            return
+        }
+
         let id = UUID()
         cycleID = id
         phase = .collapsed

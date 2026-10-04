@@ -469,8 +469,9 @@ final class ClipBookCardItem: NSCollectionViewItem {
     }
 
     private func applyHoverState(_ hovered: Bool) {
+        let accessibility = AccessibilityEnvironment.shared
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration       = 0.12
+            ctx.duration       = accessibility.motionDuration(0.12)
             ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             borderLayer.borderColor = hovered
                 ? CmdVisualStyle.cardBorderHover.cgColor
@@ -478,7 +479,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
             view.layer?.shadowRadius = hovered ? 12 : 8
         }
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.10
+            ctx.duration = accessibility.motionDuration(0.10)
             copyButton.animator().alphaValue = hovered ? 1 : 0
             pinButton.animator().alphaValue  = hovered ? 1 : 0
         }
@@ -490,7 +491,7 @@ final class ClipBookCardItem: NSCollectionViewItem {
 
     private func applySelectionState(_ selected: Bool) {
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.12
+            ctx.duration = AccessibilityEnvironment.shared.motionDuration(0.12)
             borderLayer.borderColor = selected
                 ? NSColor.controlAccentColor.withAlphaComponent(0.80).cgColor
                 : (isHovered
