@@ -1002,10 +1002,14 @@ public final class HUDPanel {
         let selectedSignature = selectedEntries.count > 1
             ? Self.stackDragSignature(for: selectedEntries)
             : nil
+        let indices = displayedIndices()
+        let primaryOriginalIndex = selectedDisplayIndex.flatMap {
+            indices.indices.contains($0) ? indices[$0] : nil
+        }
         for row in rowViews {
             let originalIndex = row.originalIndex
             let isSelected = originalIndex.map { selectedOriginalIndices.contains($0) } ?? false
-            row.setSelected(isSelected)
+            row.setSelected(isSelected, primary: isSelected && originalIndex == primaryOriginalIndex)
             row.updateStackDragCache(
                 entries: isSelected ? selectedEntries : [],
                 signature: isSelected ? selectedSignature : nil
@@ -1080,7 +1084,11 @@ public final class HUDPanel {
             }
             if multiSelectedOriginalIndices.contains(index) {
                 multiSelectedOriginalIndices.remove(index)
-                selectedDisplayIndex = visibleIndices.firstIndex { multiSelectedOriginalIndices.contains($0) } ?? displayIndex
+                // Move the anchor to a remaining selection, or clear it entirely
+                // when the last item was toggled off.
+                selectedDisplayIndex = visibleIndices.firstIndex {
+                    multiSelectedOriginalIndices.contains($0)
+                }
             } else {
                 multiSelectedOriginalIndices.insert(index)
                 selectedDisplayIndex = displayIndex
@@ -1798,6 +1806,7 @@ private final class HUDRowView: NSView {
     private var index: Int?
     private var isEmptyRow = false
     private var isSelected = false
+    private var isPrimarySelection = false
     private var highlighted = true
     private var hovering = false
     private var dragStarted = false
@@ -1936,8 +1945,9 @@ private final class HUDRowView: NSView {
         applyChrome()
     }
 
-    func setSelected(_ selected: Bool) {
+    func setSelected(_ selected: Bool, primary: Bool = false) {
         isSelected = selected
+        isPrimarySelection = primary
         applyChrome()
     }
 
@@ -2158,9 +2168,14 @@ private final class HUDRowView: NSView {
         }
         layer?.backgroundColor = background.cgColor
         let contrast = accessibility.shouldIncreaseContrast
-        layer?.borderWidth = contrast ? 1.0 : 0.5
+        // The primary (anchor) row of a multi-selection gets an accent ring so
+        // you can tell which row Return/scroll will act on.
+        let primary = isSelected && isPrimarySelection && highlighted
+        layer?.borderWidth = primary ? 1.5 : (contrast ? 1.0 : 0.5)
         let border: NSColor
-        if isSelected && highlighted {
+        if primary {
+            border = NSColor.controlAccentColor.withAlphaComponent(contrast ? 0.95 : 0.80)
+        } else if isSelected && highlighted {
             border = contrast ? CmdVisualStyle.cardBorderSelectedStrong : CmdVisualStyle.cardBorderSelected
         } else if hovering && highlighted {
             border = contrast ? CmdVisualStyle.cardBorderHoverStrong : CmdVisualStyle.cardBorderHover
