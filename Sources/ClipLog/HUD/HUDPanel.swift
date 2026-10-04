@@ -663,8 +663,13 @@ public final class HUDPanel {
             return
         }
 
-        let current = selectedDisplayIndex ?? 0
-        selectedDisplayIndex = (current + delta + indices.count) % indices.count
+        if let current = selectedDisplayIndex {
+            selectedDisplayIndex = (current + delta + indices.count) % indices.count
+        } else {
+            // Nothing selected yet: the first arrow press should land on the
+            // first (down) or last (up) row, not skip one.
+            selectedDisplayIndex = delta >= 0 ? 0 : indices.count - 1
+        }
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         updateSelection()
@@ -1057,9 +1062,12 @@ public final class HUDPanel {
 
         if modifiers.contains(.shift) {
             HUDHaptics.selectionChanged()
-            multiSelectedOriginalIndices = []
+            // Extend a contiguous range from the anchor to the clicked row.
+            let anchor = multiSelectionAnchorDisplayIndex ?? selectedDisplayIndex ?? displayIndex
+            let lower = min(anchor, displayIndex)
+            let upper = max(anchor, displayIndex)
+            multiSelectedOriginalIndices = Set(visibleIndices[lower...upper])
             selectedDisplayIndex = displayIndex
-            multiSelectionAnchorDisplayIndex = displayIndex
             updateSelection()
             return
         }
