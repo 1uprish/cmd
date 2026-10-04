@@ -1119,8 +1119,12 @@ public final class HUDPanel {
     private func entriesForAction(fallbackOriginalIndex: Int?) -> [ClipEntry] {
         let visibleIndices = displayedIndices()
         let selectedOriginalIndices: Set<Int>
+        // Only treat a multi-selection as the action target when the caller
+        // named a row that belongs to it. A programmatic dismiss (outside click,
+        // Space change, sleep) passes nil and must not paste anything.
         if !multiSelectedOriginalIndices.isEmpty,
-           fallbackOriginalIndex.map({ multiSelectedOriginalIndices.contains($0) }) ?? true {
+           let fallbackOriginalIndex,
+           multiSelectedOriginalIndices.contains(fallbackOriginalIndex) {
             selectedOriginalIndices = multiSelectedOriginalIndices
         } else {
             selectedOriginalIndices = Set(fallbackOriginalIndex.map { [$0] } ?? [])
