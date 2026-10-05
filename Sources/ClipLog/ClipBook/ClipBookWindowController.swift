@@ -89,6 +89,52 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("Use init(store:)") }
 
+    // MARK: - Appearance
+
+    public override func showWindow(_ sender: Any?) {
+        super.showWindow(sender)
+        materialize()
+    }
+
+    /// Scale + fade the surface in so it reads as a material arriving rather
+    /// than a plain opacity fade. Reduced motion keeps the instant appearance.
+    private func materialize() {
+        guard let contentView = window?.contentView else { return }
+        contentView.wantsLayer = true
+        guard let layer = contentView.layer else { return }
+
+        layer.removeAnimation(forKey: "cmd.clipbook.materialize.scale")
+        layer.removeAnimation(forKey: "cmd.clipbook.materialize.opacity")
+
+        if AccessibilityEnvironment.shared.shouldReduceMotion {
+            layer.transform = CATransform3DIdentity
+            layer.opacity = 1
+            return
+        }
+
+        let from = CATransform3DMakeScale(0.985, 0.985, 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        CATransaction.commit()
+
+        let scale = CmdSpring.animation(
+            keyPath: "transform",
+            spec: CmdSpring.standard,
+            from: NSValue(caTransform3D: from),
+            to: NSValue(caTransform3D: CATransform3DIdentity)
+        )
+        let opacity = CABasicAnimation(keyPath: "opacity")
+        opacity.fromValue = 0
+        opacity.toValue = 1
+        opacity.duration = 0.18
+        opacity.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        layer.add(scale, forKey: "cmd.clipbook.materialize.scale")
+        layer.add(opacity, forKey: "cmd.clipbook.materialize.opacity")
+    }
+
     // MARK: - Window factory
 
     private static func makeWindow() -> NSWindow {
