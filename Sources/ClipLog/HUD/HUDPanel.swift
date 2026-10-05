@@ -156,6 +156,8 @@ public final class HUDPanel {
 
     private var rowViews: [HUDRowView] = []
     private var currentSlots: [ClipEntry] = []
+    private var baseSlots: [ClipEntry] = []
+    private var searchPool: [ClipEntry]?
     private var filterText = ""
     private var selectedDisplayIndex: Int?
     private var multiSelectedOriginalIndices: Set<Int> = []
@@ -349,12 +351,13 @@ public final class HUDPanel {
         resetRootLayer()
 
         currentSlots = Array(slots.prefix(min(Layout.maxEntries, ClipLogSettings.shared.hudCardCount)))
+        baseSlots = currentSlots
+        searchPool = nil
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
         selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
-        filterBar.isHidden = true
         selectionBadge.isHidden = true
         dragRestoreSnapshot = nil
         lastCursorLocation = NSEvent.mouseLocation
@@ -962,6 +965,20 @@ public final class HUDPanel {
         selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
+
+        // Search beyond the visible cards: the first filter character pulls a
+        // larger window from the store once, then filtering stays in memory.
+        let cleanFilter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanFilter.isEmpty {
+            searchPool = nil
+            currentSlots = baseSlots
+        } else {
+            if searchPool == nil {
+                searchPool = slotManager?.searchPool() ?? baseSlots
+            }
+            currentSlots = searchPool ?? baseSlots
+        }
+
         rebuildRows()
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
         currentPanelWidth = preferredPanelWidth(for: focusedTextFrame)
@@ -971,13 +988,10 @@ public final class HUDPanel {
     }
 
     private func updateFilterBar() {
+        // Always present while the HUD is open, so search is discoverable.
         let cleanFilter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanFilter.isEmpty else {
-            filterBar.isHidden = true
-            return
-        }
-        filterBar.configure(query: cleanFilter, count: displayedIndices().count)
         filterBar.isHidden = false
+        filterBar.configure(query: cleanFilter, count: displayedIndices().count)
     }
 
     private func updateHintText() {
@@ -1000,8 +1014,18 @@ public final class HUDPanel {
     }
 
     private func matches(entry: ClipEntry, filter: String) -> Bool {
+        // Search the full stored text, not just the truncated preview, so long
+        // clips are findable by any word in them.
+        let contentText: String
+        switch entry.contentType {
+        case .text, .url, .code, .rich, .color:
+            contentText = String(data: entry.contentData, encoding: .utf8) ?? entry.previewText
+        case .image, .file:
+            contentText = entry.previewText
+        }
         let haystack = [
-            entry.previewText,
+            contentText,
+            entry.ocrText ?? "",
             entry.sourceAppName,
             entry.sourceWindowTitle ?? "",
             entry.contentType.rawValue
@@ -1194,9 +1218,8 @@ public final class HUDPanel {
         let padding = scaled(Layout.padding)
         let needsScroller = rowCount > visibleCount
         let gutter = needsScroller ? scaled(Layout.scrollbarGutter) : 0
-        let hasFilter = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let filterBarHeight = hasFilter ? scaled(30) : 0
-        let filterGap = hasFilter ? scaled(8) : 0
+        let filterBarHeight = scaled(30)
+        let filterGap = scaled(8)
         let height = padding + filterBarHeight + filterGap + visibleRowsHeight + padding
         let width = currentPanelWidth
         let size = NSSize(width: width, height: height)
@@ -1215,14 +1238,12 @@ public final class HUDPanel {
             height: visibleRowsHeight
         )
         updateFilterBar()
-        if hasFilter {
-            filterBar.frame = NSRect(
-                x: contentX,
-                y: padding + visibleRowsHeight + filterGap,
-                width: cardWidth,
-                height: filterBarHeight
-            )
-        }
+        filterBar.frame = NSRect(
+            x: contentX,
+            y: padding + visibleRowsHeight + filterGap,
+            width: cardWidth,
+            height: filterBarHeight
+        )
         let fadeHeight = scaled(20)
         topScrollFade.frame = NSRect(
             x: scrollView.frame.minX,
@@ -1825,8 +1846,17 @@ private final class HUDFilterBarView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func configure(query: String, count: Int) {
-        queryLabel.stringValue = query
-        countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
+        if query.isEmpty {
+            queryLabel.stringValue = "Type to search"
+            queryLabel.textColor = NSColor.white.withAlphaComponent(0.34)
+            countLabel.stringValue = ""
+            caret.isHidden = true
+        } else {
+            queryLabel.stringValue = query
+            queryLabel.textColor = NSColor.white.withAlphaComponent(0.92)
+            countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
+            caret.isHidden = false
+        }
         needsLayout = true
     }
 
