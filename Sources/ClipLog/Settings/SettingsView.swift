@@ -8,7 +8,7 @@ public struct SettingsView: View {
     @ObservedObject private var settings = ClipLogSettings.shared
 
     // All modal state at the top level so SwiftUI can find the window context
-    @State private var section: SettingsSection = .capture
+    @State private var section: SettingsSection? = .capture
     @State private var showClearConfirm  = false
     @State private var showResetConfirm  = false
     @State private var clearResult: String? = nil
@@ -77,39 +77,21 @@ public struct SettingsView: View {
     }
 
     private var sidebar: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        List(selection: $section) {
             ForEach(SettingsSection.allCases) { item in
-                Button {
-                    section = item
-                } label: {
-                    HStack(spacing: 9) {
-                        Image(systemName: item.icon)
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 18)
-                        Text(item.title)
-                            .font(.system(size: 13, weight: section == item ? .semibold : .regular))
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(section == item ? Color.accentColor.opacity(0.18) : Color.clear)
-                    )
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(section == item ? Color.primary : Color.secondary)
+                Label(item.title, systemImage: item.icon)
+                    .tag(item)
             }
-            Spacer(minLength: 0)
         }
-        .padding(12)
-        .frame(width: 176, alignment: .topLeading)
+        .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        .background(.ultraThinMaterial)
+        .frame(width: 200)
     }
 
     @ViewBuilder
     private var detailContent: some View {
-        switch section {
+        switch section ?? .capture {
         case .capture:         triggerCard
         case .appearance:      appearanceCard
         case .privacy:         privacyCard
