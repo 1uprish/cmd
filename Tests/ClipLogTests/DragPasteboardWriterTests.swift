@@ -15,15 +15,12 @@ final class DragPasteboardWriterTests: XCTestCase {
         )
     }
 
-    func test_text_drag_advertises_string_and_file_url() {
+    func test_text_drag_advertises_only_plain_text() {
         let writers = ClipPasteboardWriter.dragPasteboardWriters(for: entry(.text, "hello world"))
         let item = writers.compactMap { $0 as? NSPasteboardItem }.first
         let types = item?.types ?? []
-        XCTAssertTrue(types.contains(.string))
         XCTAssertEqual(item?.string(forType: .string), "hello world")
-        // A file URL lets media-only drop targets accept text drags (Finder does
-        // the same for text files).
-        XCTAssertTrue(types.contains(.fileURL))
+        XCTAssertEqual(types, [.string], "text drags should advertise only public.utf8-plain-text")
     }
 
     func test_code_drag_advertises_string() {
