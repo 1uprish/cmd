@@ -1146,7 +1146,23 @@ public final class HUDPanel {
         guard let selectedDisplayIndex,
               rowViews.indices.contains(selectedDisplayIndex)
         else { return }
-        rowContainer.scrollToVisible(rowViews[selectedDisplayIndex].frame.insetBy(dx: 0, dy: -Layout.rowGap))
+
+        let target = rowViews[selectedDisplayIndex].frame.insetBy(dx: 0, dy: -Layout.rowGap)
+        let clip = scrollView.contentView
+        let start = clip.bounds.origin
+
+        // Let the scroll view compute the minimal offset, then animate to it so
+        // keyboard navigation glides instead of jumping.
+        rowContainer.scrollToVisible(target)
+        let end = clip.bounds.origin
+        guard abs(start.x - end.x) > 0.5 || abs(start.y - end.y) > 0.5 else { return }
+
+        clip.setBoundsOrigin(start)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = AccessibilityEnvironment.shared.motionDuration(0.20)
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.90, 0.24, 1.0)
+            clip.animator().setBoundsOrigin(end)
+        }
     }
 
     // MARK: - Layout
