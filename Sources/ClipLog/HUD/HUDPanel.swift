@@ -2453,20 +2453,46 @@ private final class HUDRowView: NSView {
 
     private func animateDragLift(active: Bool) {
         guard !isEmptyRow, let layer else { return }
+        let from = layer.presentation()?.transform ?? layer.transform
+        let to = active ? CATransform3DMakeScale(1.012, 1.012, 1) : CATransform3DIdentity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = to
+        CATransaction.commit()
+        layer.add(
+            CmdSpring.animation(
+                keyPath: "transform",
+                spec: CmdSpring.standard,
+                from: NSValue(caTransform3D: from),
+                to: NSValue(caTransform3D: to)
+            ),
+            forKey: "cmd.row.lift"
+        )
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.08)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.2, 0.8, 0.2, 1.0))
-        layer.transform = active ? CATransform3DMakeScale(1.012, 1.012, 1) : CATransform3DIdentity
         layer.shadowRadius = active ? 20 : (isSelected ? 18 : 10)
         CATransaction.commit()
     }
 
     private func animateHoverLift(active: Bool) {
         guard !dragStarted, !isEmptyRow, let layer else { return }
+        let from = layer.presentation()?.transform ?? layer.transform
+        let to = active ? CATransform3DMakeScale(1.006, 1.006, 1) : CATransform3DIdentity
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = to
+        CATransaction.commit()
+        layer.add(
+            CmdSpring.animation(
+                keyPath: "transform",
+                spec: CmdSpring.standard,
+                from: NSValue(caTransform3D: from),
+                to: NSValue(caTransform3D: to)
+            ),
+            forKey: "cmd.row.hover"
+        )
         CATransaction.begin()
         CATransaction.setAnimationDuration(0.11)
-        CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(controlPoints: 0.18, 0.82, 0.20, 1.0))
-        layer.transform = active ? CATransform3DMakeScale(1.006, 1.006, 1) : CATransform3DIdentity
         layer.shadowRadius = active ? 16 : (isSelected ? 18 : 10)
         CATransaction.commit()
     }

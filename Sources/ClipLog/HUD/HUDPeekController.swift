@@ -33,13 +33,38 @@ final class HUDPeekController {
         panel.setContentSize(contentSize)
         panel.setFrameOrigin(origin(for: contentSize, near: anchor))
         panel.orderFrontRegardless()
+        panel.alphaValue = 1
 
-        panel.alphaValue = 0
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = AccessibilityEnvironment.shared.motionDuration(0.14)
-            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
-            panel.animator().alphaValue = 1
+        // Materialize: scale + fade the surface in together.
+        guard let layer = panel.contentView?.layer else { return }
+        layer.removeAllAnimations()
+        if AccessibilityEnvironment.shared.shouldReduceMotion {
+            layer.transform = CATransform3DIdentity
+            layer.opacity = 1
+            return
         }
+
+        let from = CATransform3DMakeScale(0.96, 0.96, 1)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        CATransaction.commit()
+        layer.add(
+            CmdSpring.animation(
+                keyPath: "transform",
+                spec: CmdSpring.standard,
+                from: NSValue(caTransform3D: from),
+                to: NSValue(caTransform3D: CATransform3DIdentity)
+            ),
+            forKey: "cmd.peek.scale"
+        )
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.14
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(fade, forKey: "cmd.peek.opacity")
     }
 
     func hide() {
