@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cmd</title>
+<meta name="description" content="a clipboard for macos.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0a0a0c;
+    --text: #f5f5f7;
+    --text-2: #9a9aa0;
+    --line: #212125;
+    --code-bg: #17171a;
+    --accent: #ffffff;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    letter-spacing: -0.011em;
+    -webkit-font-smoothing: antialiased;
+  }
+  .page { max-width: 680px; margin: 0 auto; padding: 96px 28px 120px; }
+  @media (max-width: 640px) { .page { padding: 56px 20px 90px; } }
+
+  h1 { font-size: 30px; font-weight: 600; letter-spacing: -0.02em; margin: 0 0 4px; }
+  h2 { font-size: 20px; font-weight: 600; letter-spacing: -0.015em; margin: 48px 0 12px; }
+  p { margin: 0 0 14px; }
+  .muted { color: var(--text-2); }
+  .small { font-size: 14px; }
+
+  a { color: var(--text); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 40px 0; }
+  ul, ol { margin: 0 0 14px; padding-left: 20px; }
+  li { margin: 5px 0; }
+  li::marker { color: var(--text-2); }
+
+  kbd {
+    font: 500 0.82em/1 "Inter", system-ui, sans-serif;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 2px 6px;
+    white-space: nowrap;
+  }
+  code {
+    font: 0.88em/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: var(--code-bg);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+
+  .download {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--accent); color: #0a0a0c;
+    font-size: 15px; font-weight: 600;
+    padding: 11px 18px; border-radius: 8px;
+    margin: 4px 0 2px;
+    transition: opacity 140ms ease, transform 140ms ease;
+  }
+  .download:hover { text-decoration: none; opacity: 0.88; }
+  .download:active { transform: scale(0.985); }
+
+  figure.video { margin: 22px 0 28px; }
+  figure.video video {
+    width: 100%; display: block; border-radius: 8px;
+    border: 1px solid var(--line); background: #000;
+  }
+  figure.video .slot {
+    width: 100%; aspect-ratio: 16 / 9;
+    display: grid; place-items: center;
+    border: 1px dashed var(--line); border-radius: 8px;
+    color: var(--text-2); font-size: 14px; background: #101012;
+  }
+  figure.video figcaption { margin-top: 8px; font-size: 14px; color: var(--text-2); }
+
+  footer {
+    margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
+    font-size: 14px; color: var(--text-2);
+    display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <h1>cmd</h1>
+  <p class="muted">a clipboard for macos.</p>
+
+  <p style="margin-top:24px">
+    <a class="download" href="https://github.com/1uprish/cmd/releases/latest">download for macos</a>
+  </p>
+  <p class="small muted">macos 14+, free, needs accessibility access</p>
+
+  <hr>
+
+  <p>copy stuff like normal. hold <kbd>cmd</kbd><kbd>v</kbd> and a small window shows up next to whatever you're typing in. click an item and it pastes. type to filter if you've copied too much.</p>
+
+  <h2>how it works</h2>
+  <ol>
+    <li>copy like you always do</li>
+    <li>hold <kbd>cmd</kbd><kbd>v</kbd>, the window opens by your cursor</li>
+    <li>click something to paste it, or type to narrow things down</li>
+  </ol>
+
+  <figure class="video">
+    <video src="videos/01-hud.mp4" muted loop playsinline autoplay></video>
+    <figcaption>hold cmd v to open the register.</figcaption>
+  </figure>
+
+  <figure class="video">
+    <video src="videos/02-paste.mp4" muted loop playsinline autoplay></video>
+    <figcaption>pick one and it pastes right where you're typing.</figcaption>
+  </figure>
+
+  <figure class="video">
+    <video src="videos/07-gather.mp4" muted loop playsinline autoplay></video>
+    <figcaption>tap cmd twice to gather several copies into one.</figcaption>
+  </figure>
+
+  <h2>what it keeps</h2>
+  <ul>
+    <li>text, links, code, files, colors, images, rich text</li>
+    <li>search: filter as you type. the history window searches everything, even by meaning.</li>
+    <li>gather: tap cmd twice to combine a bunch of copies into one paste</li>
+    <li>drag and drop: drag a clip straight into any app</li>
+    <li>images: thumbnails with a hover preview, and you can pull text out of screenshots</li>
+    <li>transforms: paste as plain text, uppercase, json, base64, and more</li>
+    <li>pins and queue: pin the stuff you reuse, or queue a few to paste one at a time</li>
+  </ul>
+
+  <figure class="video">
+    <video src="videos/06-filter.mp4" muted loop playsinline autoplay></video>
+    <figcaption>type in the register to filter it down.</figcaption>
+  </figure>
+
+  <figure class="video">
+    <video src="videos/03-history.mp4" muted loop playsinline autoplay></video>
+    <figcaption>the history window, with type filter and text or semantic search.</figcaption>
+  </figure>
+
+  <h2>privacy</h2>
+  <ul>
+    <li>everything is encrypted on disk, and the key stays on your mac</li>
+    <li>local only, no account, no cloud, nothing leaves the machine</li>
+    <li>passwords get spotted and hidden. you can exclude apps and let old stuff expire.</li>
+  </ul>
+
+  <h2>accessibility</h2>
+  <p class="muted">respects reduced motion, reduced transparency, and larger system text sizes.</p>
+
+  <h2>menu bar and settings</h2>
+  <figure class="video">
+    <video src="videos/04-menu.mp4" muted loop playsinline autoplay></video>
+    <figcaption>everything from the menu bar.</figcaption>
+  </figure>
+  <figure class="video">
+    <video src="videos/05-settings.mp4" muted loop playsinline autoplay></video>
+    <figcaption>and the settings to make it yours.</figcaption>
+  </figure>
+
+  <hr>
+
+  <h2>download</h2>
+  <p>drag cmd.app into applications, then give it accessibility access when it asks.</p>
+  <p style="margin-top:16px">
+    <a class="download" href="https://github.com/1uprish/cmd/releases/latest">download cmd</a>
+  </p>
+  <p class="small muted">it's ad-hoc signed, so gatekeeper might grumble the first time. right click the app and pick open, or run <code>xattr -dr com.apple.quarantine /Applications/CMD.app</code>.</p>
+
+  <footer>
+    <span>© 2026 cmd, all rights reserved</span>
+    <span><a href="https://github.com/1uprish/cmd">github</a></span>
+  </footer>
+
+</div>
+<script>
+  // respect reduced motion: don't autoplay the demo clips
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.querySelectorAll('video[autoplay]').forEach(function (v) {
+      v.autoplay = false; v.pause(); v.controls = true;
+    });
+  }
+</script>
+</body>
+</html>
