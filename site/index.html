@@ -109,10 +109,18 @@
     font-size: 15px; font-weight: 600;
     padding: 11px 18px; border-radius: 8px;
     margin: 4px 0 2px;
-    transition: opacity 140ms ease, transform 140ms ease;
+    touch-action: manipulation;
+    transition: opacity 140ms ease;
   }
   .download:hover { text-decoration: none; opacity: 0.88; }
-  .download:active { transform: scale(0.985); }
+  /* press feedback lands on pointer-down, instantly */
+  .download:active, .download.is-pressed { transform: scale(0.97); }
+  /* only the release animates, with a touch of spring */
+  @media (prefers-reduced-motion: no-preference) {
+    .download:not(:active):not(.is-pressed) {
+      transition: opacity 140ms ease, transform 220ms cubic-bezier(0.34, 1.2, 0.64, 1);
+    }
+  }
 
   figure.video { margin: 22px 0 28px; position: relative; }
   figure.video video {
@@ -299,6 +307,16 @@
     }, { threshold: 0.5 });
 
     figures.forEach(function (fig) { io.observe(fig); });
+  })();
+
+  // commit press feedback on pointer-down, not on click
+  (function () {
+    document.querySelectorAll('.download').forEach(function (el) {
+      el.addEventListener('pointerdown', function () { el.classList.add('is-pressed'); });
+      ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (type) {
+        el.addEventListener(type, function () { el.classList.remove('is-pressed'); });
+      });
+    });
   })();
 
   // reveal the sticky chrome once the hero CTA scrolls out of view
