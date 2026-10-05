@@ -214,7 +214,7 @@ final class TapController {
     private func applyCapturePause() {
         let settings = ClipLogSettings.shared
         let paused = settings.isCapturePaused
-        pasteboardWatcher.isPaused = paused
+        pasteboardWatcher.setPaused(paused)
         menuBarController?.refreshPauseState()
 
         capturePauseTimer?.invalidate()

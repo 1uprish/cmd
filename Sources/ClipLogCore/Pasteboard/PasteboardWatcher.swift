@@ -24,7 +24,15 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     /// When true, new clipboard changes are ignored (advancing the change count
     /// so a resume does not capture everything that happened while paused).
-    public var isPaused = false
+    /// The flag is written from the main thread and read by the poll on the
+    /// watcher queue, so writes hop the queue to stay synchronized.
+    private var paused = false
+
+    public func setPaused(_ paused: Bool) {
+        queue.async {
+            self.paused = paused
+        }
+    }
 
     private enum AppendClip {
         case text(String)
@@ -297,7 +305,7 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         let pb = NSPasteboard.general
         let current = pb.changeCount
-        if isPaused {
+        if paused {
             lastChangeCount = current
             return
         }
