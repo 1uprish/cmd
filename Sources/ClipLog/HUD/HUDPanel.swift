@@ -308,8 +308,12 @@ public final class HUDPanel {
     // MARK: - Show
 
     public func show(sessionID: UInt64, slots: [ClipEntry]) {
+        show(sessionID: sessionID, slots: slots, restoring: nil)
+    }
+
+    private func show(sessionID: UInt64, slots: [ClipEntry], restoring snapshot: DragRestoreSnapshot?) {
         guard Thread.isMainThread else {
-            DispatchQueue.main.async { self.show(sessionID: sessionID, slots: slots) }
+            DispatchQueue.main.async { self.show(sessionID: sessionID, slots: slots, restoring: snapshot) }
             return
         }
 
@@ -336,6 +340,16 @@ public final class HUDPanel {
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
         selectionBadge.isHidden = true
         dragRestoreSnapshot = nil
+        if let snapshot {
+            // Re-apply the pre-drag state before the single rebuild, so a
+            // cancelled-drag restore does not rebuild twice or resize twice.
+            filterText = snapshot.filterText
+            selectedDisplayIndex = snapshot.selectedDisplayIndex
+            multiSelectedOriginalIndices = snapshot.selectedOriginalIndices.count > 1
+                ? snapshot.selectedOriginalIndices
+                : []
+            multiSelectionAnchorDisplayIndex = snapshot.anchorDisplayIndex
+        }
         lastCursorLocation = NSEvent.mouseLocation
         focusedTextFrame = FocusedTextInputLocator.frameNearCursor(lastCursorLocation)
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
@@ -430,20 +444,9 @@ public final class HUDPanel {
             ]
         )
         let restoredSessionID = UInt64.random(in: 1...UInt64.max)
-        show(sessionID: restoredSessionID, slots: snapshot.slots)
+        show(sessionID: restoredSessionID, slots: snapshot.slots, restoring: snapshot)
         onRestoreAfterCancelledDrag?(restoredSessionID)
-        filterText = snapshot.filterText
-        selectedDisplayIndex = snapshot.selectedDisplayIndex
-        multiSelectedOriginalIndices = snapshot.selectedOriginalIndices.count > 1
-            ? snapshot.selectedOriginalIndices
-            : []
-        multiSelectionAnchorDisplayIndex = snapshot.anchorDisplayIndex
-        rebuildRows()
-        layoutPanel()
-        updateFilterBar()
-        updateSelection()
         scrollSelectedRowToVisible()
-        dragRestoreSnapshot = nil
         DiagnosticsLogbook.shared.actionOutput(
             feature: "drag",
             action: "restore_cancelled_drag",
