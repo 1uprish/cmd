@@ -988,10 +988,14 @@ public final class HUDPanel {
     }
 
     private func updateFilterBar() {
-        // Always present while the HUD is open, so search is discoverable.
+        // Only shown while a query is typed, so the register stays clean.
         let cleanFilter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        filterBar.isHidden = false
+        guard !cleanFilter.isEmpty else {
+            filterBar.isHidden = true
+            return
+        }
         filterBar.configure(query: cleanFilter, count: displayedIndices().count)
+        filterBar.isHidden = false
     }
 
     private func updateHintText() {
@@ -1218,8 +1222,9 @@ public final class HUDPanel {
         let padding = scaled(Layout.padding)
         let needsScroller = rowCount > visibleCount
         let gutter = needsScroller ? scaled(Layout.scrollbarGutter) : 0
-        let filterBarHeight = scaled(30)
-        let filterGap = scaled(8)
+        let hasFilter = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let filterBarHeight = hasFilter ? scaled(30) : 0
+        let filterGap = hasFilter ? scaled(8) : 0
         let height = padding + filterBarHeight + filterGap + visibleRowsHeight + padding
         let width = currentPanelWidth
         let size = NSSize(width: width, height: height)
@@ -1238,12 +1243,14 @@ public final class HUDPanel {
             height: visibleRowsHeight
         )
         updateFilterBar()
-        filterBar.frame = NSRect(
-            x: contentX,
-            y: padding + visibleRowsHeight + filterGap,
-            width: cardWidth,
-            height: filterBarHeight
-        )
+        if hasFilter {
+            filterBar.frame = NSRect(
+                x: contentX,
+                y: padding + visibleRowsHeight + filterGap,
+                width: cardWidth,
+                height: filterBarHeight
+            )
+        }
         let fadeHeight = scaled(20)
         topScrollFade.frame = NSRect(
             x: scrollView.frame.minX,
