@@ -8,6 +8,7 @@ public struct SettingsView: View {
     @ObservedObject private var settings = ClipLogSettings.shared
 
     // All modal state at the top level so SwiftUI can find the window context
+    @State private var section: SettingsSection = .capture
     @State private var showClearConfirm  = false
     @State private var showResetConfirm  = false
     @State private var clearResult: String? = nil
@@ -16,18 +17,18 @@ public struct SettingsView: View {
     public init() {}
 
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: true) {
-            VStack(alignment: .leading, spacing: 16) {
-                triggerCard
-                appearanceCard
-                privacyCard
-                storageCard
-                diagnosticsCard
-                generalCard
+        HStack(spacing: 0) {
+            sidebar
+            Divider()
+            ScrollView(.vertical, showsIndicators: true) {
+                VStack(alignment: .leading, spacing: 16) {
+                    detailContent
+                }
+                .padding(22)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(22)
         }
-        .frame(width: 500)
+        .frame(minWidth: 760, minHeight: 520)
         // Confirmation dialog must live at body level to attach to the window
         .alert("Clear all clipboard history?", isPresented: $showClearConfirm) {
             Button("Clear All", role: .destructive) {
@@ -42,6 +43,79 @@ public struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Restores appearance, capture, privacy, and storage options. Clipboard history is not affected.")
+        }
+    }
+
+    // MARK: - Sidebar
+
+    private enum SettingsSection: String, CaseIterable, Identifiable {
+        case capture, appearance, privacy, history, troubleshooting, general
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .capture:         return "Capture"
+            case .appearance:      return "Appearance"
+            case .privacy:         return "Privacy"
+            case .history:         return "History"
+            case .troubleshooting: return "Troubleshooting"
+            case .general:         return "General"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .capture:         return "hand.tap.fill"
+            case .appearance:      return "rectangle.inset.filled"
+            case .privacy:         return "lock.shield.fill"
+            case .history:         return "externaldrive.fill"
+            case .troubleshooting: return "waveform.path.ecg"
+            case .general:         return "gearshape.fill"
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(SettingsSection.allCases) { item in
+                Button {
+                    section = item
+                } label: {
+                    HStack(spacing: 9) {
+                        Image(systemName: item.icon)
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 18)
+                        Text(item.title)
+                            .font(.system(size: 13, weight: section == item ? .semibold : .regular))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(section == item ? Color.accentColor.opacity(0.18) : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(section == item ? Color.primary : Color.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(width: 176, alignment: .topLeading)
+    }
+
+    @ViewBuilder
+    private var detailContent: some View {
+        switch section {
+        case .capture:         triggerCard
+        case .appearance:      appearanceCard
+        case .privacy:         privacyCard
+        case .history:         storageCard
+        case .troubleshooting: diagnosticsCard
+        case .general:         generalCard
         }
     }
 

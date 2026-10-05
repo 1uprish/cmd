@@ -327,8 +327,8 @@ public final class MenuBarController: NSObject {
         let window = NSWindow(contentViewController: hosting)
         window.title = "cmd Settings"
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.setContentSize(NSSize(width: 520, height: 700))
-        window.minSize = NSSize(width: 480, height: 500)
+        window.setContentSize(NSSize(width: 780, height: 560))
+        window.minSize = NSSize(width: 760, height: 520)
         window.center()
         settingsWindow = window
         window.makeKeyAndOrderFront(nil)
