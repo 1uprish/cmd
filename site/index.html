@@ -34,42 +34,32 @@
     font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
   }
-  .page { position: relative; max-width: 680px; margin: 0 auto; padding: 96px 28px 120px; }
-  @media (max-width: 640px) { .page { padding: 56px 20px 90px; } }
+  .layout {
+    display: grid;
+    grid-template-columns: 220px minmax(0, 680px);
+    gap: 64px;
+    align-items: start;
+    justify-content: center;
+    max-width: 1028px;
+    margin: 0 auto;
+    padding: 96px 32px 120px;
+  }
+  .rail { position: sticky; top: 44px; }
+  .rail-mark { font-size: var(--step-3); font-weight: 600; line-height: 1.1; letter-spacing: -0.022em; margin: 0 0 4px; }
+  .rail-tag { margin: 0 0 20px; }
+  .rail-note { margin: 12px 0 0; }
+
+  .page { position: relative; min-width: 0; padding: 28px; }
   /* quiet drafting frame around the canvas */
   .page::before {
     content: ""; position: absolute; inset: 0; pointer-events: none;
     border: 1px dashed var(--line);
   }
-
-  .chrome {
-    position: fixed; inset: 0 0 auto; z-index: 20;
-    transform: translateY(-100%); visibility: hidden;
-    background: rgba(10, 10, 12, 0.72);
-    -webkit-backdrop-filter: blur(24px) saturate(180%);
-    backdrop-filter: blur(24px) saturate(180%);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
-    box-shadow: 0 10px 40px -20px rgba(0, 0, 0, 0.85);
-    transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s linear 320ms;
+  @media (max-width: 860px) {
+    .layout { grid-template-columns: 1fr; gap: 0; max-width: 680px; padding: 40px 20px 90px; }
+    .rail { position: static; margin-bottom: 36px; }
+    .page { padding: 24px 20px; }
   }
-  .chrome.show {
-    transform: none; visibility: visible;
-    transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1), visibility 0s;
-  }
-  .chrome-inner {
-    max-width: 680px; margin: 0 auto;
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 10px 28px;
-  }
-  @media (max-width: 640px) { .chrome-inner { padding: 10px 20px; } }
-  .chrome-mark { font-size: var(--step-0); font-weight: 600; letter-spacing: -0.02em; }
-  .chrome-dl {
-    font-size: var(--step--1); font-weight: 600;
-    background: var(--accent); color: #0a0a0c;
-    border-radius: 8px; padding: 7px 12px;
-  }
-  .chrome-dl:hover { text-decoration: none; opacity: 0.88; }
-  .chrome-dl:active { transform: scale(0.97); }
 
   h1 {
     font-size: var(--step-3); font-weight: 600; line-height: 1.1;
@@ -192,19 +182,10 @@
 
   @media (prefers-reduced-motion: reduce) {
     /* replace slides/springs with a short cross-fade, never motion */
-    .chrome {
-      transform: none; opacity: 0;
-      transition: opacity 200ms ease, visibility 0s linear 200ms;
-    }
-    .chrome.show { transform: none; opacity: 1; transition: opacity 200ms ease, visibility 0s; }
     .download:not(:active):not(.is-pressed) { transition: opacity 140ms ease; }
     figure.video .replay { transition: none; }
   }
   @media (prefers-reduced-transparency: reduce) {
-    .chrome {
-      background: #0a0a0c;
-      -webkit-backdrop-filter: none; backdrop-filter: none;
-    }
     figure.video .replay {
       background: #17171a;
       -webkit-backdrop-filter: none; backdrop-filter: none;
@@ -212,29 +193,23 @@
   }
   @media (prefers-contrast: more) {
     :root { --text-2: #d5d5da; --line: #4a4a52; }
-    .chrome { background: #000; border-bottom-color: var(--line); }
     figure.video { border-color: var(--line); }
   }
 </style>
 </head>
 <body>
-<header class="chrome" id="chrome">
-  <div class="chrome-inner">
-    <a class="chrome-mark" href="#top">cmd</a>
-    <a class="chrome-dl" href="https://github.com/1uprish/cmd/releases/latest">download</a>
-  </div>
-</header>
-<div class="page" id="top">
+<div class="layout">
 
-  <h1>cmd</h1>
-  <p class="muted">a clipboard for macos.</p>
+  <aside class="rail">
+    <h1 class="rail-mark"><a href="#top">cmd</a></h1>
+    <p class="muted rail-tag">a clipboard for macos.</p>
+    <p class="cta-top">
+      <a class="download" href="https://github.com/1uprish/cmd/releases/latest">download for macos</a>
+    </p>
+    <p class="small muted rail-note">macos 14+, free, needs accessibility access</p>
+  </aside>
 
-  <p class="cta-top">
-    <a class="download" href="https://github.com/1uprish/cmd/releases/latest">download for macos</a>
-  </p>
-  <p class="small muted">macos 14+, free, needs accessibility access</p>
-
-  <hr>
+  <main class="page" id="top">
 
   <p>copy stuff like normal. hold <kbd><span class="sr-only">command</span>⌘</kbd><kbd>V</kbd> and a small window shows up next to whatever you're typing in. click an item and it pastes. type to filter if you've copied too much.</p>
 
@@ -320,6 +295,7 @@
     <span><a href="https://github.com/1uprish/cmd">github</a></span>
   </footer>
 
+  </main>
 </div>
 <script>
   (function () {
@@ -378,17 +354,6 @@
     });
   })();
 
-  // reveal the sticky chrome once the hero CTA scrolls out of view
-  (function () {
-    var chrome = document.getElementById('chrome');
-    var heroCta = document.querySelector('.page .download');
-    if (!chrome || !heroCta || !('IntersectionObserver' in window)) return;
-    new IntersectionObserver(function (entries) {
-      entries.forEach(function (entry) {
-        chrome.classList.toggle('show', !entry.isIntersecting);
-      });
-    }, { threshold: 0 }).observe(heroCta);
-  })();
 </script>
 </body>
 </html>
