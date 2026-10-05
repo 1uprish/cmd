@@ -72,9 +72,19 @@
     text-wrap: balance;
   }
   h2 {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
     font-size: var(--step-1); font-weight: 600; line-height: 1.25;
     letter-spacing: -0.012em; margin: 48px 0 12px;
-    text-wrap: balance;
+  }
+  h2 .num {
+    font: 500 var(--step--1)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--text-2); letter-spacing: 0.06em;
+    font-variant-numeric: tabular-nums;
+  }
+  h2 .title { font-weight: 600; letter-spacing: -0.012em; }
+  h2 .desc {
+    font-size: var(--step--1); font-weight: 400;
+    color: var(--text-2); letter-spacing: 0;
   }
   p { margin: 0 0 14px; }
   .cta-top { margin-top: 24px; }
@@ -215,7 +225,7 @@
 
   <p>copy stuff like normal. hold <kbd><span class="sr-only">command</span>⌘</kbd><kbd>V</kbd> and a small window shows up next to whatever you're typing in. click an item and it pastes. type to filter if you've copied too much.</p>
 
-  <h2>how it works</h2>
+  <h2><span class="num" aria-hidden="true">01</span><span class="title">how it works</span><span class="desc">copy, open the register, paste.</span></h2>
   <ol>
     <li>copy like you always do</li>
     <li>hold <kbd><span class="sr-only">command</span>⌘</kbd><kbd>V</kbd>, the window opens by your cursor</li>
@@ -240,7 +250,7 @@
     <figcaption>tap ⌘ twice to gather several copies into one.</figcaption>
   </figure>
 
-  <h2>what it keeps</h2>
+  <h2><span class="num" aria-hidden="true">02</span><span class="title">what it keeps</span><span class="desc">everything you copy, ready to paste.</span></h2>
   <ul>
     <li>text, links, code, files, colors, images, rich text</li>
     <li>search: filter as you type. the history window searches everything, even by meaning.</li>
@@ -263,17 +273,17 @@
     <figcaption>the history window, with type filter and text or semantic search.</figcaption>
   </figure>
 
-  <h2>privacy</h2>
+  <h2><span class="num" aria-hidden="true">03</span><span class="title">privacy</span><span class="desc">local, encrypted, and yours.</span></h2>
   <ul>
     <li>everything is encrypted on disk, and the key stays on your mac</li>
     <li>local only, no account, no cloud, nothing leaves the machine</li>
     <li>passwords get spotted and hidden. you can exclude apps and let old stuff expire.</li>
   </ul>
 
-  <h2>accessibility</h2>
+  <h2><span class="num" aria-hidden="true">04</span><span class="title">accessibility</span><span class="desc">adapts to your mac.</span></h2>
   <p class="muted">respects reduced motion, reduced transparency, and larger system text sizes.</p>
 
-  <h2>menu bar and settings</h2>
+  <h2><span class="num" aria-hidden="true">05</span><span class="title">menu bar and settings</span><span class="desc">reach it without leaving your app.</span></h2>
   <figure class="video">
     <video src="videos/04-menu.mp4" poster="videos/04-menu-poster.jpg" muted playsinline preload="metadata"></video>
     <button class="replay" type="button" aria-label="replay">replay</button>
@@ -287,7 +297,7 @@
 
   <hr>
 
-  <h2>download</h2>
+  <h2><span class="num" aria-hidden="true">06</span><span class="title">download</span><span class="desc">drag it in and grant access.</span></h2>
   <p>drag cmd.app into applications, then give it accessibility access when it asks.</p>
   <p class="cta-bottom">
     <a class="download" href="https://github.com/1uprish/cmd/releases/latest">download cmd</a>
