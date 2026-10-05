@@ -82,7 +82,7 @@
   .download:hover { text-decoration: none; opacity: 0.88; }
   .download:active { transform: scale(0.985); }
 
-  figure.video { margin: 22px 0 28px; }
+  figure.video { margin: 22px 0 28px; position: relative; }
   figure.video video {
     width: 100%; display: block; border-radius: 8px;
     border: 1px solid var(--line); background: #000;
@@ -94,6 +94,19 @@
     color: var(--text-2); font-size: var(--step--1); background: #101012;
   }
   figure.video figcaption { margin-top: 8px; font-size: var(--step--1); color: var(--text-2); }
+  figure.video .replay {
+    position: absolute; top: 10px; right: 10px;
+    font: 500 var(--step--1)/1 -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    color: var(--text); background: rgba(20, 20, 22, 0.66);
+    -webkit-backdrop-filter: blur(10px) saturate(160%);
+    backdrop-filter: blur(10px) saturate(160%);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    border-radius: 999px; padding: 6px 10px; cursor: pointer;
+    opacity: 0; pointer-events: none;
+    transition: opacity 160ms ease;
+  }
+  figure.video:hover .replay,
+  figure.video.ended .replay { opacity: 1; pointer-events: auto; }
 
   footer {
     margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line);
@@ -125,17 +138,20 @@
   </ol>
 
   <figure class="video">
-    <video src="videos/01-hud.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/01-hud.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>hold cmd v to open the register.</figcaption>
   </figure>
 
   <figure class="video">
-    <video src="videos/02-paste.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/02-paste.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>pick one and it pastes right where you're typing.</figcaption>
   </figure>
 
   <figure class="video">
-    <video src="videos/07-gather.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/07-gather.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>tap cmd twice to gather several copies into one.</figcaption>
   </figure>
 
@@ -151,12 +167,14 @@
   </ul>
 
   <figure class="video">
-    <video src="videos/06-filter.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/06-filter.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>type in the register to filter it down.</figcaption>
   </figure>
 
   <figure class="video">
-    <video src="videos/03-history.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/03-history.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>the history window, with type filter and text or semantic search.</figcaption>
   </figure>
 
@@ -172,11 +190,13 @@
 
   <h2>menu bar and settings</h2>
   <figure class="video">
-    <video src="videos/04-menu.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/04-menu.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>everything from the menu bar.</figcaption>
   </figure>
   <figure class="video">
-    <video src="videos/05-settings.mp4" muted loop playsinline autoplay></video>
+    <video src="videos/05-settings.mp4" muted playsinline preload="metadata"></video>
+    <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>and the settings to make it yours.</figcaption>
   </figure>
 
@@ -196,12 +216,51 @@
 
 </div>
 <script>
-  // respect reduced motion: don't autoplay the demo clips
-  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    document.querySelectorAll('video[autoplay]').forEach(function (v) {
-      v.autoplay = false; v.pause(); v.controls = true;
+  (function () {
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var figures = Array.prototype.slice.call(document.querySelectorAll('figure.video'));
+
+    figures.forEach(function (fig) {
+      var video = fig.querySelector('video');
+      if (!video) return;
+      var replay = fig.querySelector('.replay');
+
+      video.addEventListener('play', function () { fig.classList.remove('ended'); });
+      video.addEventListener('ended', function () { fig.classList.add('ended'); });
+
+      if (replay) {
+        replay.addEventListener('click', function () {
+          video.currentTime = 0;
+          video.play().catch(function () {});
+        });
+      }
+
+      // tap the clip to pause or resume at any time
+      video.addEventListener('click', function () {
+        if (video.paused) { video.play().catch(function () {}); }
+        else { video.pause(); }
+      });
     });
-  }
+
+    // under reduced motion, don't move anything: the poster is the content
+    if (reduce) return;
+
+    // play each clip once as it enters view; pause when it scrolls away
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        var video = entry.target.querySelector('video');
+        if (!video) return;
+        if (entry.isIntersecting) {
+          video.currentTime = 0;
+          video.play().catch(function () {});
+        } else {
+          video.pause();
+        }
+      });
+    }, { threshold: 0.5 });
+
+    figures.forEach(function (fig) { io.observe(fig); });
+  })();
 </script>
 </body>
 </html>
