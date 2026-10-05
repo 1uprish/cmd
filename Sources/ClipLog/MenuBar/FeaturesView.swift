@@ -152,8 +152,8 @@ private struct Feature: Identifiable {
                      description: "Tap Command twice to start Gather. Copied text joins one combined clipboard item, and copied images are carried with it for rich paste targets."),
                 Item(title: "Cursor lens", shortcut: nil,
                      description: "A small lens opens from the cursor or active text field and shows the live item count, type mix, timeout, and combined preview."),
-                Item(title: "Toggle off", shortcut: "⌘ ⌘",
-                     description: "Tap Command twice again, press Escape, paste, or start typing to end the gather session. A longer safety timeout stays in the background."),
+                 Item(title: "Toggle off", shortcut: "⌘ ⌘",
+                      description: "Tap Command twice again, paste, or start typing to end the gather session. A longer safety timeout stays in the background."),
             ]
         ),
         Feature(

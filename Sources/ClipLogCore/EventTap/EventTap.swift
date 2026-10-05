@@ -261,16 +261,18 @@ public final class ClipLogEventTap: @unchecked Sendable {
         switch type {
 
         case .keyDown:
+            // HUD is open — intercept all keys at HID level. If AppKit has
+            // already dismissed the panel, reset first so the next ⌘V starts fresh.
+            // HUD-consumed keys navigate the panel, not the user's document, so
+            // they must not end an active gather session.
+            if case .hudActive = state, !isStaleHUDState() {
+                return handleHUDKeyDown(event: event)
+            }
             if appendSessionActive, let reason = appendInteractionReason(for: event) {
                 notifyAppendInteraction(reason)
             }
             if event.flags.contains(.maskCommand) {
                 commandTapClean = false
-            }
-            // HUD is open — intercept all keys at HID level. If AppKit has
-            // already dismissed the panel, reset first so the next ⌘V starts fresh.
-            if case .hudActive = state, !isStaleHUDState() {
-                return handleHUDKeyDown(event: event)
             }
             guard isCommandV(event) else { return event }
             return handleCommandVDown(event: event)
@@ -659,9 +661,9 @@ public final class ClipLogEventTap: @unchecked Sendable {
 
     private func appendInteractionReason(for event: CGEvent) -> String? {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        if keyCode == Self.kVK_Escape {
-            return "escape"
-        }
+        // Escape does NOT end a gather session: it is the reflexive "dismiss
+        // the floating indicator" key, and a stray press here silently killed
+        // active sessions. Ending stays on toggle, paste, typing, and timeout.
         if isCommandV(event) {
             return nil
         }
@@ -736,6 +738,7 @@ public final class ClipLogEventTap: @unchecked Sendable {
     private static let kVK_UpArrow: Int64 = 126
     private static let kVK_DownArrow: Int64 = 125
     private static let kVK_C: Int64 = 8
+    private static let kVK_V: Int64 = 9
     private static let blockedCommandLetterKeys: Set<Int64> = [
         12, // Q
         13, // W
@@ -790,6 +793,24 @@ public final class ClipLogEventTap: @unchecked Sendable {
             DiagnosticsLogbook.shared.actionInput(feature: "hud", action: "key_copy_selection", details: ["sessionID": "\(sessionID)"])
             DispatchQueue.main.async { self.onHUDCopySelection?() }
             DiagnosticsLogbook.shared.actionOutput(feature: "hud", action: "key_copy_selection", details: ["success": "true"])
+            return nil
+        }
+
+        // ⌘V while the HUD is open stays suppressed — including the auto-repeats
+        // of the V key still held from opening the panel. Passing those through
+        // would deliver a burst of pastes to the app behind the HUD. Matches the
+        // state machine model: hudActive + cmdVDown → suppress.
+        if cmd, vk == Self.kVK_V {
+            DiagnosticsLogbook.shared.actionInput(
+                feature: "hud",
+                action: "key_cmd_v_suppressed",
+                details: ["sessionID": "\(sessionID)"]
+            )
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "key_cmd_v_suppressed",
+                details: ["success": "true"]
+            )
             return nil
         }
 
