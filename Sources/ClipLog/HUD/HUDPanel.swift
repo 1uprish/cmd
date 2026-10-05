@@ -201,6 +201,7 @@ public final class HUDPanel {
     private var clickMonitor: Any?
     private var sleepObserver: Any?
     private var spaceObserver: Any?
+    private var scrollObserver: Any?
     private var reduceMotion: Bool {
         AccessibilityEnvironment.shared.shouldReduceMotion
     }
@@ -306,9 +307,33 @@ public final class HUDPanel {
         subtitleLabel.isHidden = true
         filterBadge.isHidden = true
         rootView.addSubview(scrollView)
+        rootView.addSubview(topScrollFade)
+        rootView.addSubview(bottomScrollFade)
         rootView.addSubview(selectionBadge)
         topScrollFade.isHidden = true
         bottomScrollFade.isHidden = true
+
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        scrollObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.updateScrollFades()
+        }
+    }
+
+    /// Fade the list edge where content continues, instead of a hard divider.
+    private func updateScrollFades() {
+        let clip = scrollView.contentView
+        let offset = clip.bounds.origin.y
+        let visibleHeight = clip.bounds.height
+        let documentHeight = rowContainer.frame.height
+        let needsScroller = documentHeight > visibleHeight + 0.5
+        let atTop = offset <= 0.5
+        let atBottom = offset + visibleHeight >= documentHeight - 0.5
+        topScrollFade.isHidden = !(needsScroller && !atTop)
+        bottomScrollFade.isHidden = !(needsScroller && !atBottom)
     }
 
     // MARK: - Show
@@ -1163,6 +1188,8 @@ public final class HUDPanel {
             context.duration = AccessibilityEnvironment.shared.motionDuration(0.20)
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.90, 0.24, 1.0)
             clip.animator().setBoundsOrigin(end)
+        } completionHandler: { [weak self] in
+            self?.updateScrollFades()
         }
     }
 
@@ -1193,8 +1220,19 @@ public final class HUDPanel {
             width: scrollWidth,
             height: visibleRowsHeight
         )
-        topScrollFade.isHidden = true
-        bottomScrollFade.isHidden = true
+        let fadeHeight = scaled(20)
+        topScrollFade.frame = NSRect(
+            x: scrollView.frame.minX,
+            y: scrollView.frame.maxY - fadeHeight,
+            width: scrollView.frame.width,
+            height: fadeHeight
+        )
+        bottomScrollFade.frame = NSRect(
+            x: scrollView.frame.minX,
+            y: scrollView.frame.minY,
+            width: scrollView.frame.width,
+            height: fadeHeight
+        )
         rowContainer.frame = NSRect(
             x: 0,
             y: 0,
@@ -1209,6 +1247,7 @@ public final class HUDPanel {
         }
 
         layoutSelectionBadge()
+        updateScrollFades()
         panel.setFrameOrigin(panelOrigin(size: size, focusedTextFrame: focusedTextFrame))
     }
 
@@ -1311,6 +1350,7 @@ public final class HUDPanel {
     private func scrollToTop() {
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
+        updateScrollFades()
     }
 
     // MARK: - Animation
