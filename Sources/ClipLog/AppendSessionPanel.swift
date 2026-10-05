@@ -297,6 +297,7 @@ final class AppendSessionPanel {
         if now.timeIntervalSince(lastHapticAt) > 0.16 {
             lastHapticAt = now
             NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            CmdFeedbackSound.play(.capture)
         }
 
         let dotPulse = CABasicAnimation(keyPath: "opacity")

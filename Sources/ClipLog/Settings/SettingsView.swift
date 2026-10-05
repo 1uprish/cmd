@@ -457,6 +457,24 @@ public struct SettingsView: View {
                 ))
                 .labelsHidden()
             }
+
+            Divider()
+
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Feedback sounds")
+                        .font(.body)
+                    Text("A subtle sound on copy, paste, and capture.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.feedbackSoundsEnabled },
+                    set: { settings.feedbackSoundsEnabled = $0 }
+                ))
+                .labelsHidden()
+            }
         }
     }
 

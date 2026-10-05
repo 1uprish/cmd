@@ -14,6 +14,7 @@ public final class ClipLogSettings: ObservableObject {
         static let sensitiveRetentionMinutes = "sensitiveRetentionMinutes"
         static let userExcludedBundles = "userExcludedBundles"
         static let launchAtLogin       = "launchAtLogin"
+        static let feedbackSoundsEnabled = "feedbackSoundsEnabled"
         static let hudOpacity          = "hudOpacity"
         static let hudSizeScale        = "hudSizeScale"
         static let hudAnimationStyle   = "hudAnimationStyle"
@@ -90,6 +91,18 @@ public final class ClipLogSettings: ObservableObject {
                 details: ["step": "sync_launch_agent", "enabled": "\(launchAtLogin)"]
             )
             LaunchAtLoginManager.setEnabled(launchAtLogin)
+        }
+    }
+
+    /// Play a subtle confirmation sound alongside haptics on commit moments.
+    @Published public var feedbackSoundsEnabled: Bool {
+        didSet {
+            logSettingChange(
+                name: Keys.feedbackSoundsEnabled,
+                oldValue: "\(oldValue)",
+                newValue: "\(feedbackSoundsEnabled)"
+            )
+            UserDefaults.standard.set(feedbackSoundsEnabled, forKey: Keys.feedbackSoundsEnabled)
         }
     }
 
@@ -183,6 +196,7 @@ public final class ClipLogSettings: ObservableObject {
             Keys.sensitiveRetentionMinutes: 60,
             Keys.userExcludedBundles: [String](),
             Keys.launchAtLogin:       false,
+            Keys.feedbackSoundsEnabled: false,
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
@@ -197,6 +211,7 @@ public final class ClipLogSettings: ObservableObject {
         sensitiveRetentionMinutes = defaults.integer(forKey: Keys.sensitiveRetentionMinutes)
         userExcludedBundles = defaults.stringArray(forKey: Keys.userExcludedBundles) ?? []
         launchAtLogin       = defaults.bool(forKey: Keys.launchAtLogin)
+        feedbackSoundsEnabled = defaults.bool(forKey: Keys.feedbackSoundsEnabled)
         hudOpacity          = defaults.double(forKey: Keys.hudOpacity)
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
         hudAnimationStyle   = defaults.string(forKey: Keys.hudAnimationStyle) ?? "magnetic"

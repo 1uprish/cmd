@@ -511,6 +511,7 @@ public final class HUDPanel {
                 ]
             )
             slotManager?.paste(entries: selectedEntries)
+            HUDHaptics.pasted()
         }
 
         DiagnosticsLogbook.shared.actionProcess(
@@ -2578,9 +2579,15 @@ private enum HUDHaptics {
 
     static func copied() {
         perform(.levelChange)
+        CmdFeedbackSound.play(.copy)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.045) {
             perform(.alignment)
         }
+    }
+
+    static func pasted() {
+        perform(.alignment)
+        CmdFeedbackSound.play(.paste)
     }
 
     static func dragStarted(count: Int) {
