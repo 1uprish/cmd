@@ -97,6 +97,14 @@ final class TapController {
                 self?.eventTap.hudDragDidEnd()
             }
 
+            // Pasting a card from the HUD is a paste interaction: it ends an
+            // active gather session before the pasteboard write, so the
+            // watcher never merges the pasted card into the gather payload.
+            let watcher = pasteboardWatcher
+            HUDPanel.shared.onGatherInterrupt = {
+                watcher.endAppendMode(reason: "hud_paste")
+            }
+
             // Safety net: lets the tap self-heal if hudDidDismiss was never called.
             // Called on tapQueue; HUDPanel switches to main before touching AppKit.
             eventTap.isHUDActuallyVisible = { HUDPanel.shared.isPanelActuallyVisible }
@@ -127,7 +135,6 @@ final class TapController {
 
             // Double-tap Command toggles append collection. While on,
             // copied text is continuously merged into one paste-ready payload.
-            let watcher = pasteboardWatcher
             eventTap.onAppendGesture = {
                 watcher.enableAppendMode()
             }

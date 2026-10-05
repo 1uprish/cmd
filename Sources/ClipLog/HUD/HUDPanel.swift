@@ -17,8 +17,13 @@ public final class HUDPanel {
     public var onDismiss: ((UInt64) -> Void)?
     public var onRestoreAfterCancelledDrag: ((UInt64) -> Void)?
     public var onDragStart: (() -> Void)?
+
     public var onDragEnd: (() -> Void)?
 
+    /// Fired just before a pasted card selection writes to the pasteboard, so
+    /// an active gather session can end first — otherwise the watcher merges
+    /// the pasted card back into the gather payload.
+    public var onGatherInterrupt: (() -> Void)?
     private enum Layout {
         static let fallbackWidth: CGFloat = 520
         static let minWidth: CGFloat = 420
@@ -500,6 +505,7 @@ public final class HUDPanel {
                     "entryTypes": selectedEntries.map(\.contentType.rawValue).joined(separator: ",")
                 ]
             )
+            onGatherInterrupt?()
             slotManager?.paste(entries: selectedEntries)
             HUDHaptics.pasted()
         }
