@@ -252,7 +252,7 @@ public final class HUDPanel {
         titleLabel.attributedStringValue = NSAttributedString(
             string: "cmd",
             attributes: [
-                .font: NSFont.systemFont(ofSize: 19, weight: .semibold),
+                .font: CmdTypography.font(size: 19, weight: .semibold),
                 .kern: -0.4,
             ]
         )
@@ -264,7 +264,7 @@ public final class HUDPanel {
         titleLabel.shadow?.shadowBlurRadius = 5
         titleLabel.shadow?.shadowOffset = CGSize(width: 0, height: -1)
 
-        subtitleLabel.font = .systemFont(ofSize: 13, weight: .bold)
+        subtitleLabel.font = CmdTypography.font(size: 13, weight: .semibold)
         subtitleLabel.textColor = NSColor.white.withAlphaComponent(0.68)
         subtitleLabel.lineBreakMode = .byTruncatingTail
         subtitleLabel.shadow = NSShadow()
@@ -272,7 +272,7 @@ public final class HUDPanel {
         subtitleLabel.shadow?.shadowBlurRadius = 4
         subtitleLabel.shadow?.shadowOffset = CGSize(width: 0, height: -1)
 
-        filterBadge.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
+        filterBadge.font = CmdTypography.monoFont(size: 12, weight: .semibold)
         filterBadge.textColor = .white
         filterBadge.alignment = .center
         filterBadge.drawsBackground = true
@@ -282,7 +282,7 @@ public final class HUDPanel {
         filterBadge.layer?.masksToBounds = true
         filterBadge.isHidden = true
 
-        selectionBadge.font = .systemFont(ofSize: 11, weight: .bold)
+        selectionBadge.font = CmdTypography.font(size: 11, weight: .semibold)
         selectionBadge.textColor = .white
         selectionBadge.alignment = .center
         selectionBadge.drawsBackground = true
@@ -1288,7 +1288,7 @@ public final class HUDPanel {
     }
 
     private func scaled(_ value: CGFloat) -> CGFloat {
-        (value * currentHUDScale).rounded()
+        (value * currentHUDScale * CmdTypography.textScale).rounded()
     }
 
     private func scrollToTop() {
@@ -2206,7 +2206,7 @@ private final class HUDRowView: NSView {
     }
 
     private func scaled(_ value: CGFloat) -> CGFloat {
-        (value * sizeScale).rounded()
+        (value * sizeScale * CmdTypography.textScale).rounded()
     }
 
     private func animateDragLift(active: Bool) {

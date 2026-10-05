@@ -152,7 +152,7 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         titleLabel.attributedStringValue = NSAttributedString(
             string: "cmd",
             attributes: [
-                .font: NSFont.systemFont(ofSize: 19, weight: .semibold),
+                .font: CmdTypography.font(size: 19, weight: .semibold),
                 .kern: -0.4,
             ]
         )
@@ -166,7 +166,7 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         // ── Filter popup ───────────────────────────────────────────────
         filterPopUp.translatesAutoresizingMaskIntoConstraints = false
         filterPopUp.bezelStyle = .regularSquare
-        filterPopUp.font       = .systemFont(ofSize: 12)
+        filterPopUp.font       = CmdTypography.font(size: 12)
         filterPopUp.controlSize = .large
 
         let allTypes: [(String, ClipContentType?)] = [
@@ -225,7 +225,7 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         searchModeSegment.setLabel("Semantic", forSegment: 1)
         searchModeSegment.selectedSegment = 0
         searchModeSegment.segmentStyle = .capsule
-        searchModeSegment.font = .systemFont(ofSize: 11)
+        searchModeSegment.font = CmdTypography.font(size: 11)
         searchModeSegment.controlSize = .large
         searchModeSegment.target = self
         searchModeSegment.action = #selector(searchModeChanged(_:))
@@ -344,7 +344,7 @@ public final class ClipBookWindowController: NSWindowController, NSWindowDelegat
         emptyIcon.translatesAutoresizingMaskIntoConstraints = false
 
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
-        emptyLabel.font      = .systemFont(ofSize: 13)
+        emptyLabel.font      = CmdTypography.font(size: 13)
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
         emptyLabel.isEditable   = false
