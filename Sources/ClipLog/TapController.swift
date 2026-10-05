@@ -9,6 +9,7 @@ final class TapController {
     private var slotManager: SlotManager?
     private var menuBarController: MenuBarController?
     private var sensitivePurgeTimer: Timer?
+    private var capturePauseTimer: Timer?
     private var settingsCancellables = Set<AnyCancellable>()
     private var appendSessionObserver: NSObjectProtocol?
 
@@ -65,6 +66,7 @@ final class TapController {
                 }
             }
             pasteboardWatcher.start()
+            applyCapturePause()
             startSensitivePurgeTimer(store: store)
 
             // HUD trigger: show floating panel with recent clipboard entries.
@@ -162,6 +164,8 @@ final class TapController {
         }
         sensitivePurgeTimer?.invalidate()
         sensitivePurgeTimer = nil
+        capturePauseTimer?.invalidate()
+        capturePauseTimer = nil
         settingsCancellables.removeAll()
         eventTap.stop()
         pasteboardWatcher.stop()
@@ -191,6 +195,31 @@ final class TapController {
                 self?.purgeExpiredHistoryIfNeeded(in: store, retentionDays: days)
             }
             .store(in: &settingsCancellables)
+
+        settings.$capturePausedUntil
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                self?.applyCapturePause()
+            }
+            .store(in: &settingsCancellables)
+    }
+
+    private func applyCapturePause() {
+        let settings = ClipLogSettings.shared
+        let paused = settings.isCapturePaused
+        pasteboardWatcher.isPaused = paused
+        menuBarController?.refreshPauseState()
+
+        capturePauseTimer?.invalidate()
+        capturePauseTimer = nil
+        guard paused else { return }
+
+        let remaining = settings.capturePausedUntil - Date().timeIntervalSinceReferenceDate
+        guard remaining > 0 else { return }
+        capturePauseTimer = Timer.scheduledTimer(withTimeInterval: remaining, repeats: false) { [weak self] _ in
+            ClipLogSettings.shared.capturePausedUntil = 0
+            self?.applyCapturePause()
+        }
     }
 
     private func purgeExpiredHistoryIfNeeded(in store: ClipStore, retentionDays: Int) {

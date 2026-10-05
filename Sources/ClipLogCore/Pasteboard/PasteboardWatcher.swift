@@ -22,6 +22,10 @@ public final class PasteboardWatcher: @unchecked Sendable {
     public var onNewEntry: ((ClipEntry) -> Void)?
     public weak var store: ClipStore?
 
+    /// When true, new clipboard changes are ignored (advancing the change count
+    /// so a resume does not capture everything that happened while paused).
+    public var isPaused = false
+
     private enum AppendClip {
         case text(String)
         case image(Data)
@@ -293,6 +297,10 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
         let pb = NSPasteboard.general
         let current = pb.changeCount
+        if isPaused {
+            lastChangeCount = current
+            return
+        }
         guard current != lastChangeCount else { return }
         DiagnosticsLogbook.shared.actionInput(
             feature: "pasteboard",

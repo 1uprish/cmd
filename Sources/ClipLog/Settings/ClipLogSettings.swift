@@ -15,6 +15,7 @@ public final class ClipLogSettings: ObservableObject {
         static let userExcludedBundles = "userExcludedBundles"
         static let launchAtLogin       = "launchAtLogin"
         static let feedbackSoundsEnabled = "feedbackSoundsEnabled"
+        static let capturePausedUntil = "capturePausedUntil"
         static let hudOpacity          = "hudOpacity"
         static let hudSizeScale        = "hudSizeScale"
         static let hudAnimationStyle   = "hudAnimationStyle"
@@ -92,6 +93,24 @@ public final class ClipLogSettings: ObservableObject {
             )
             LaunchAtLoginManager.setEnabled(launchAtLogin)
         }
+    }
+
+    /// Epoch (`timeIntervalSinceReferenceDate`) until which capture is paused.
+    /// Zero means capture is active.
+    @Published public var capturePausedUntil: Double {
+        didSet {
+            logSettingChange(
+                name: Keys.capturePausedUntil,
+                oldValue: "\(oldValue)",
+                newValue: "\(capturePausedUntil)"
+            )
+            UserDefaults.standard.set(capturePausedUntil, forKey: Keys.capturePausedUntil)
+        }
+    }
+
+    /// True while clipboard capture is intentionally paused.
+    public var isCapturePaused: Bool {
+        capturePausedUntil > Date().timeIntervalSinceReferenceDate
     }
 
     /// Play a subtle confirmation sound alongside haptics on commit moments.
@@ -197,6 +216,7 @@ public final class ClipLogSettings: ObservableObject {
             Keys.userExcludedBundles: [String](),
             Keys.launchAtLogin:       false,
             Keys.feedbackSoundsEnabled: false,
+            Keys.capturePausedUntil: 0.0,
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
@@ -212,6 +232,7 @@ public final class ClipLogSettings: ObservableObject {
         userExcludedBundles = defaults.stringArray(forKey: Keys.userExcludedBundles) ?? []
         launchAtLogin       = defaults.bool(forKey: Keys.launchAtLogin)
         feedbackSoundsEnabled = defaults.bool(forKey: Keys.feedbackSoundsEnabled)
+        capturePausedUntil = defaults.double(forKey: Keys.capturePausedUntil)
         hudOpacity          = defaults.double(forKey: Keys.hudOpacity)
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
         hudAnimationStyle   = defaults.string(forKey: Keys.hudAnimationStyle) ?? "magnetic"

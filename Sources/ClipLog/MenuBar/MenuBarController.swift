@@ -16,6 +16,8 @@ public final class MenuBarController: NSObject {
     private var degradedObserver:  (any NSObjectProtocol)?
     private var recoveredObserver: (any NSObjectProtocol)?
     private var clearAllObserver:  (any NSObjectProtocol)?
+    private var isTapDegraded = false
+    private var isAccessibilityGranted = true
 
     init(
         store: ClipStore,
@@ -50,7 +52,8 @@ public final class MenuBarController: NSObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.setButtonImage(symbolName: "exclamationmark.triangle")
+            self?.isTapDegraded = true
+            self?.updateStatusIcon()
         }
 
         recoveredObserver = nc.addObserver(
@@ -58,7 +61,8 @@ public final class MenuBarController: NSObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.setButtonImage(symbolName: "command")
+            self?.isTapDegraded = false
+            self?.updateStatusIcon()
         }
 
         clearAllObserver = nc.addObserver(
@@ -82,8 +86,29 @@ public final class MenuBarController: NSObject {
     // then switches back to the command logo.
     public func setAccessibilityGranted(_ granted: Bool) {
         DispatchQueue.main.async {
-            self.setButtonImage(symbolName: granted ? "command" : "exclamationmark.triangle.fill")
+            self.isAccessibilityGranted = granted
+            self.updateStatusIcon()
         }
+    }
+
+    /// Rebuild the menu and icon after the capture-pause state changes.
+    public func refreshPauseState() {
+        DispatchQueue.main.async {
+            self.statusItem?.menu = self.buildMenu()
+            self.updateStatusIcon()
+        }
+    }
+
+    private func updateStatusIcon() {
+        let symbol: String
+        if !isAccessibilityGranted || isTapDegraded {
+            symbol = "exclamationmark.triangle.fill"
+        } else if ClipLogSettings.shared.isCapturePaused {
+            symbol = "pause.circle"
+        } else {
+            symbol = "command"
+        }
+        setButtonImage(symbolName: symbol)
     }
 
     // MARK: - Menu construction
@@ -125,6 +150,28 @@ public final class MenuBarController: NSObject {
             recentItem.submenu = submenu
             menu.addItem(recentItem)
         }
+
+        let capturePaused = ClipLogSettings.shared.isCapturePaused
+        let pauseItem = NSMenuItem(title: "Pause Capturing", action: nil, keyEquivalent: "")
+        let pauseMenu = NSMenu()
+        if capturePaused {
+            let resume = NSMenuItem(title: "Resume Capturing", action: #selector(resumeCapture), keyEquivalent: "")
+            resume.target = self
+            pauseMenu.addItem(resume)
+            pauseMenu.addItem(.separator())
+        }
+        let pause15 = NSMenuItem(title: "For 15 Minutes", action: #selector(pauseFor15Minutes), keyEquivalent: "")
+        pause15.target = self
+        let pause60 = NSMenuItem(title: "For 1 Hour", action: #selector(pauseFor1Hour), keyEquivalent: "")
+        pause60.target = self
+        let pauseUntil = NSMenuItem(title: "Until I Resume", action: #selector(pauseIndefinitely), keyEquivalent: "")
+        pauseUntil.target = self
+        pauseMenu.addItem(pause15)
+        pauseMenu.addItem(pause60)
+        pauseMenu.addItem(pauseUntil)
+        pauseItem.submenu = pauseMenu
+        pauseItem.state = capturePaused ? .on : .off
+        menu.addItem(pauseItem)
 
         let featuresItem = NSMenuItem(
             title: "Features & Guide",
@@ -386,6 +433,26 @@ public final class MenuBarController: NSObject {
         // Rebuild the menu so the Recent section reflects the cleared state.
         statusItem?.menu = buildMenu()
         DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "clear_all_history", details: ["success": "true"])
+    }
+
+    @objc private func resumeCapture() {
+        ClipLogSettings.shared.capturePausedUntil = 0
+    }
+
+    @objc private func pauseFor15Minutes() {
+        ClipLogSettings.shared.capturePausedUntil = Date()
+            .addingTimeInterval(15 * 60)
+            .timeIntervalSinceReferenceDate
+    }
+
+    @objc private func pauseFor1Hour() {
+        ClipLogSettings.shared.capturePausedUntil = Date()
+            .addingTimeInterval(60 * 60)
+            .timeIntervalSinceReferenceDate
+    }
+
+    @objc private func pauseIndefinitely() {
+        ClipLogSettings.shared.capturePausedUntil = .greatestFiniteMagnitude
     }
 
     @objc private func copyRecent(_ sender: NSMenuItem) {
