@@ -1,4 +1,5 @@
 import AppKit
+import ApplicationServices
 import SwiftUI
 import ClipLogCore
 
@@ -31,6 +32,7 @@ public final class MenuBarController: NSObject {
 
     public func setup() {
         DiagnosticsLogbook.shared.actionInput(feature: "menu_bar", action: "setup")
+        isAccessibilityGranted = AXIsProcessTrusted()
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem = item
 
@@ -43,6 +45,7 @@ public final class MenuBarController: NSObject {
         }
 
         item.menu = buildMenu()
+        updateStatusIcon()
         DiagnosticsLogbook.shared.actionProcess(feature: "menu_bar", action: "setup", details: ["step": "menu_built"])
 
         let nc = NotificationCenter.default
@@ -82,11 +85,16 @@ public final class MenuBarController: NSObject {
         if let obs = clearAllObserver  { NotificationCenter.default.removeObserver(obs) }
     }
 
-    // Shows a warning triangle until Accessibility permission is granted,
-    // then switches back to the command logo.
+    // Shows a warning triangle (and a Grant Permission item) until Accessibility
+    // is granted, then switches back to the command logo and hides the item.
     public func setAccessibilityGranted(_ granted: Bool) {
         DispatchQueue.main.async {
+            guard granted != self.isAccessibilityGranted else {
+                self.updateStatusIcon()
+                return
+            }
             self.isAccessibilityGranted = granted
+            self.statusItem?.menu = self.buildMenu()
             self.updateStatusIcon()
         }
     }
@@ -124,6 +132,21 @@ public final class MenuBarController: NSObject {
         titleItem.attributedTitle = NSAttributedString(string: "cmd", attributes: attrs)
         menu.addItem(titleItem)
         menu.addItem(.separator())
+
+        if !isAccessibilityGranted {
+            let grantItem = NSMenuItem(
+                title: "Grant Accessibility Permission…",
+                action: #selector(openAccessibilitySettings),
+                keyEquivalent: ""
+            )
+            grantItem.target = self
+            grantItem.image = NSImage(
+                systemSymbolName: "exclamationmark.triangle.fill",
+                accessibilityDescription: nil
+            )
+            menu.addItem(grantItem)
+            menu.addItem(.separator())
+        }
 
         let historyItem = NSMenuItem(
             title: "Show History…",
@@ -453,6 +476,23 @@ public final class MenuBarController: NSObject {
 
     @objc private func pauseIndefinitely() {
         ClipLogSettings.shared.capturePausedUntil = .greatestFiniteMagnitude
+    }
+
+    @objc private func openAccessibilitySettings() {
+        // Trigger the system prompt so cmd is registered in the Accessibility
+        // list, then jump straight to the pane.
+        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
+        AXIsProcessTrustedWithOptions(options)
+
+        let urls = [
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+            "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Accessibility",
+        ]
+        for raw in urls {
+            if let url = URL(string: raw), NSWorkspace.shared.open(url) {
+                return
+            }
+        }
     }
 
     @objc private func copyRecent(_ sender: NSMenuItem) {
