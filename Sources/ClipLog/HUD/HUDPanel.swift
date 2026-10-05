@@ -151,8 +151,6 @@ public final class HUDPanel {
     private let selectionBadge = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
     private let rowContainer = HUDRowsDocumentView()
-    private let topScrollFade = HUDScrollFadeView(isTop: true)
-    private let bottomScrollFade = HUDScrollFadeView(isTop: false)
 
     private var rowViews: [HUDRowView] = []
     private var currentSlots: [ClipEntry] = []
@@ -203,7 +201,6 @@ public final class HUDPanel {
     private var clickMonitor: Any?
     private var sleepObserver: Any?
     private var spaceObserver: Any?
-    private var scrollObserver: Any?
     private var reduceMotion: Bool {
         AccessibilityEnvironment.shared.shouldReduceMotion
     }
@@ -299,34 +296,8 @@ public final class HUDPanel {
         subtitleLabel.isHidden = true
         filterBar.isHidden = true
         rootView.addSubview(scrollView)
-        rootView.addSubview(topScrollFade)
-        rootView.addSubview(bottomScrollFade)
         rootView.addSubview(filterBar)
         rootView.addSubview(selectionBadge)
-        topScrollFade.isHidden = true
-        bottomScrollFade.isHidden = true
-
-        scrollView.contentView.postsBoundsChangedNotifications = true
-        scrollObserver = NotificationCenter.default.addObserver(
-            forName: NSView.boundsDidChangeNotification,
-            object: scrollView.contentView,
-            queue: .main
-        ) { [weak self] _ in
-            self?.updateScrollFades()
-        }
-    }
-
-    /// Fade the list edge where content continues, instead of a hard divider.
-    private func updateScrollFades() {
-        let clip = scrollView.contentView
-        let offset = clip.bounds.origin.y
-        let visibleHeight = clip.bounds.height
-        let documentHeight = rowContainer.frame.height
-        let needsScroller = documentHeight > visibleHeight + 0.5
-        let atTop = offset <= 0.5
-        let atBottom = offset + visibleHeight >= documentHeight - 0.5
-        topScrollFade.isHidden = !(needsScroller && !atTop)
-        bottomScrollFade.isHidden = !(needsScroller && !atBottom)
     }
 
     // MARK: - Show
@@ -1207,8 +1178,6 @@ public final class HUDPanel {
             context.duration = AccessibilityEnvironment.shared.motionDuration(0.20)
             context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.90, 0.24, 1.0)
             clip.animator().setBoundsOrigin(end)
-        } completionHandler: { [weak self] in
-            self?.updateScrollFades()
         }
     }
 
@@ -1251,19 +1220,6 @@ public final class HUDPanel {
                 height: filterBarHeight
             )
         }
-        let fadeHeight = scaled(20)
-        topScrollFade.frame = NSRect(
-            x: scrollView.frame.minX,
-            y: scrollView.frame.maxY - fadeHeight,
-            width: scrollView.frame.width,
-            height: fadeHeight
-        )
-        bottomScrollFade.frame = NSRect(
-            x: scrollView.frame.minX,
-            y: scrollView.frame.minY,
-            width: scrollView.frame.width,
-            height: fadeHeight
-        )
         rowContainer.frame = NSRect(
             x: 0,
             y: 0,
@@ -1278,7 +1234,6 @@ public final class HUDPanel {
         }
 
         layoutSelectionBadge()
-        updateScrollFades()
         panel.setFrameOrigin(panelOrigin(size: size, focusedTextFrame: focusedTextFrame))
     }
 
@@ -1381,7 +1336,6 @@ public final class HUDPanel {
     private func scrollToTop() {
         scrollView.contentView.scroll(to: .zero)
         scrollView.reflectScrolledClipView(scrollView.contentView)
-        updateScrollFades()
     }
 
     // MARK: - Animation
@@ -1903,41 +1857,6 @@ private final class HUDRootView: NSView {
 }
 
 private final class HUDHeaderScrimView: NSView {
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-}
-
-private final class HUDScrollFadeView: NSView {
-    private let isTop: Bool
-    private let gradient = CAGradientLayer()
-
-    init(isTop: Bool) {
-        self.isTop = isTop
-        super.init(frame: .zero)
-        wantsLayer = true
-        layer = gradient
-        gradient.colors = [
-            NSColor(calibratedWhite: 0.02, alpha: isTop ? 0.30 : 0.0).cgColor,
-            NSColor(calibratedWhite: 0.02, alpha: isTop ? 0.0 : 0.30).cgColor,
-        ]
-        gradient.locations = [0, 1]
-        gradient.startPoint = CGPoint(x: 0.5, y: 0)
-        gradient.endPoint = CGPoint(x: 0.5, y: 1)
-        gradient.cornerRadius = 18
-        gradient.masksToBounds = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError()
-    }
-
-    override func layout() {
-        super.layout()
-        gradient.frame = bounds
-    }
-
     override func hitTest(_ point: NSPoint) -> NSView? {
         nil
     }
