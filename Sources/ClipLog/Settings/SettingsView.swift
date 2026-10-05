@@ -9,6 +9,7 @@ public struct SettingsView: View {
 
     // All modal state at the top level so SwiftUI can find the window context
     @State private var showClearConfirm  = false
+    @State private var showResetConfirm  = false
     @State private var clearResult: String? = nil
     @State private var transitionPreviewToken = 0
 
@@ -35,6 +36,12 @@ public struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Pinned items will not be removed. This cannot be undone.")
+        }
+        .alert("Reset all settings to defaults?", isPresented: $showResetConfirm) {
+            Button("Reset", role: .destructive) { settings.resetToDefaults() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Restores appearance, capture, privacy, and storage options. Clipboard history is not affected.")
         }
     }
 
@@ -350,7 +357,7 @@ public struct SettingsView: View {
     // MARK: - Storage
 
     private var storageCard: some View {
-        card("Storage", icon: "externaldrive.fill", color: .secondary) {
+        card("History & Retention", icon: "externaldrive.fill", color: .secondary) {
             row(label: "Keep history for") {
                 Picker("Retention", selection: Binding(
                     get: { settings.retentionDays },
@@ -399,7 +406,7 @@ public struct SettingsView: View {
     // MARK: - Diagnostics
 
     private var diagnosticsCard: some View {
-        card("Diagnostics", icon: "waveform.path.ecg", color: .secondary) {
+        card("Troubleshooting", icon: "waveform.path.ecg", color: .secondary) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remote anomaly reports")
@@ -475,6 +482,17 @@ public struct SettingsView: View {
                 ))
                 .labelsHidden()
             }
+
+            Divider()
+
+            HStack {
+                Button("Reset to Defaults…") {
+                    showResetConfirm = true
+                }
+                .controlSize(.regular)
+                Spacer()
+            }
+            note("Restores every option to its shipped value. Clipboard history is not affected.")
         }
     }
 

@@ -241,6 +241,25 @@ public final class ClipLogSettings: ObservableObject {
         remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
     }
 
+    /// Restore every preference to its shipped default. Does not touch stored
+    /// clipboard history.
+    public func resetToDefaults() {
+        holdThresholdMs = 160
+        retentionDays = 30
+        historyDisplayLimit = 200
+        sensitiveRetentionMinutes = 60
+        userExcludedBundles = []
+        launchAtLogin = false
+        hudOpacity = 1.0
+        hudSizeScale = 1.0
+        hudAnimationStyle = "magnetic"
+        feedbackSoundsEnabled = false
+        capturePausedUntil = 0
+        remoteDiagnosticsEnabled = false
+        remoteDiagnosticsEndpoint = ""
+        remoteDiagnosticsToken = ""
+    }
+
     private func logSettingChange(
         name: String,
         oldValue: String,
