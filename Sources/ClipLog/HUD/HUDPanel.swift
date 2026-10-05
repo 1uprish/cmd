@@ -2004,7 +2004,8 @@ private final class HUDRowView: NSView {
         copyButton.action = #selector(copyTapped)
         copyButton.wantsLayer = true
 
-        [appIconView, thumbnailView, appNameLabel, previewLabel, timestampLabel, typeLabel, copyButton].forEach {
+        // Thumbnail first so the app-icon source badge can sit above it.
+        [thumbnailView, appIconView, appNameLabel, previewLabel, timestampLabel, typeLabel, copyButton].forEach {
             addSubview($0)
         }
         applySizeMetrics()
@@ -2082,20 +2083,13 @@ private final class HUDRowView: NSView {
         // When there is a thumbnail, it is the content: show it and drop the app
         // icon so two similar squares don't compete. The app name still labels it.
         let hasThumbnail = !thumbnailView.isHidden
-        let iconSize: CGFloat = (isEmptyRow || hasThumbnail) ? 0 : scaled(46)
+        let iconSize: CGFloat = isEmptyRow ? 0 : scaled(46)
         let thumbnailSize = NSSize(width: scaled(84), height: scaled(56))
         let thumbnailGap: CGFloat = hasThumbnail ? scaled(14) : 0
         let buttonSize: CGFloat = copyButton.isHidden ? 0 : scaled(30)
         let timeWidth: CGFloat = timestampLabel.stringValue.isEmpty ? 0 : scaled(76)
 
-        appIconView.isHidden = isEmptyRow || hasThumbnail
-        appIconView.frame = NSRect(
-            x: left,
-            y: (bounds.height - iconSize) / 2,
-            width: iconSize,
-            height: iconSize
-        )
-
+        appIconView.isHidden = isEmptyRow
         if hasThumbnail {
             thumbnailView.frame = NSRect(
                 x: left,
@@ -2103,6 +2097,26 @@ private final class HUDRowView: NSView {
                 width: thumbnailSize.width,
                 height: thumbnailSize.height
             )
+            // Source badge on the thumbnail's bottom-left corner.
+            let badge = scaled(20)
+            appIconView.frame = NSRect(
+                x: thumbnailView.frame.minX + scaled(5),
+                y: thumbnailView.frame.minY + scaled(5),
+                width: badge,
+                height: badge
+            )
+            appIconView.layer?.cornerRadius = badge * 0.29
+            appIconView.layer?.borderWidth = 1
+            appIconView.layer?.borderColor = NSColor.black.withAlphaComponent(0.4).cgColor
+        } else {
+            appIconView.frame = NSRect(
+                x: left,
+                y: (bounds.height - iconSize) / 2,
+                width: iconSize,
+                height: iconSize
+            )
+            appIconView.layer?.cornerRadius = scaled(12)
+            appIconView.layer?.borderWidth = 0
         }
 
         let leadingWidth = hasThumbnail ? thumbnailSize.width + thumbnailGap : iconSize + scaled(14)
