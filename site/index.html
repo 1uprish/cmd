@@ -154,6 +154,32 @@
     font-size: var(--step--1); color: var(--text-2);
     display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* replace slides/springs with a short cross-fade, never motion */
+    .chrome {
+      transform: none; opacity: 0;
+      transition: opacity 200ms ease, visibility 0s linear 200ms;
+    }
+    .chrome.show { transform: none; opacity: 1; transition: opacity 200ms ease, visibility 0s; }
+    .download:not(:active):not(.is-pressed) { transition: opacity 140ms ease; }
+    figure.video .replay { transition: none; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .chrome {
+      background: #0a0a0c;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+    figure.video .replay {
+      background: #17171a;
+      -webkit-backdrop-filter: none; backdrop-filter: none;
+    }
+  }
+  @media (prefers-contrast: more) {
+    :root { --text-2: #d5d5da; --line: #4a4a52; }
+    .chrome { background: #000; border-bottom-color: var(--line); }
+    figure.video video { border-color: var(--line); }
+  }
 </style>
 </head>
 <body>
