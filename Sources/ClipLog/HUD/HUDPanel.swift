@@ -1699,6 +1699,7 @@ public final class HUDPanel {
     }
 
     private func removeDismissGuards() {
+        HUDPeekController.shared.hide()
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
@@ -1919,6 +1920,7 @@ private final class HUDRowView: NSView {
     private var copyResetTimer: Timer?
     private var revealTimer: Timer?
     private var isRevealingSensitive = false
+    private var peekWorkItem: DispatchWorkItem?
     private var cardOpacity: CGFloat = 1.0
     private var sizeScale: CGFloat = 1.0
     private var cachedDragImage: NSImage?
@@ -2014,6 +2016,7 @@ private final class HUDRowView: NSView {
 
     func configure(entry: ClipEntry, index: Int) {
         cancelSensitiveReveal()
+        cancelPeek()
         self.entry = entry
         self.index = index
         isEmptyRow = false
@@ -2035,6 +2038,7 @@ private final class HUDRowView: NSView {
     }
 
     func configureEmpty(title: String, message: String) {
+        cancelPeek()
         entry = nil
         index = nil
         isEmptyRow = true
@@ -2156,12 +2160,44 @@ private final class HUDRowView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         dragStarted = false
+        cancelPeek()
         mouseDownLocation = convert(event.locationInWindow, from: nil)
         if !isEmptyRow {
             NSCursor.closedHand.set()
         }
         animateDragLift(active: true)
         scheduleSensitiveReveal()
+    }
+
+    // Hovering an image card reveals the full image, so the thumbnail only has
+    // to be a signpost.
+    private func schedulePeek() {
+        peekWorkItem?.cancel()
+        guard entry?.contentType == .image, entry?.isSensitive != true else { return }
+        let item = DispatchWorkItem { [weak self] in self?.presentPeek() }
+        peekWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
+    }
+
+    private func cancelPeek() {
+        peekWorkItem?.cancel()
+        peekWorkItem = nil
+        HUDPeekController.shared.hide()
+    }
+
+    private func presentPeek() {
+        guard let entry, entry.contentType == .image, !entry.isSensitive, !isEmptyRow else { return }
+        guard let window, let image = fullImage(for: entry) else { return }
+        let screenRect = window.convertToScreen(convert(bounds, to: nil))
+        HUDPeekController.shared.show(image: image, near: screenRect)
+    }
+
+    private func fullImage(for entry: ClipEntry) -> NSImage? {
+        if let data = ClipPasteboardWriter.originalImageData(for: entry),
+           let image = NSImage(data: data) {
+            return image
+        }
+        return thumbnailView.image
     }
 
     // Deliberate press-and-hold reveals a redacted item so people stay in
@@ -2196,6 +2232,7 @@ private final class HUDRowView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         cancelSensitiveReveal()
+        cancelPeek()
         guard !isEmptyRow, let index, !dragStarted else { return }
         let dragStart = Date()
         let point = convert(event.locationInWindow, from: nil)
@@ -2266,12 +2303,14 @@ private final class HUDRowView: NSView {
         }
         applyChrome()
         animateHoverLift(active: true)
+        schedulePeek()
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
         NSCursor.arrow.set()
         cancelSensitiveReveal()
+        cancelPeek()
         applyChrome()
         animateHoverLift(active: false)
     }
