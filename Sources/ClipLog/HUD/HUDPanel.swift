@@ -156,6 +156,8 @@ public final class HUDPanel {
     private var currentSlots: [ClipEntry] = []
     private var baseSlots: [ClipEntry] = []
     private var searchPool: [ClipEntry]?
+    private var isLoadingSearchPool = false
+    private var didInitialLayout = false
     private var filterText = ""
     private var selectedDisplayIndex: Int?
     private var multiSelectedOriginalIndices: Set<Int> = []
@@ -324,6 +326,8 @@ public final class HUDPanel {
         currentSlots = Array(slots.prefix(min(Layout.maxEntries, ClipLogSettings.shared.hudCardCount)))
         baseSlots = currentSlots
         searchPool = nil
+        isLoadingSearchPool = false
+        didInitialLayout = false
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
         selectedDisplayIndex = nil
@@ -929,7 +933,6 @@ public final class HUDPanel {
             rowViews.append(row)
         }
         updateSelection()
-        ClipPasteboardWriter.prewarmDragPayloads(for: indices.compactMap { currentSlots.indices.contains($0) ? currentSlots[$0] : nil })
     }
 
     private func refreshRowsForFilter() {
@@ -943,11 +946,13 @@ public final class HUDPanel {
         if cleanFilter.isEmpty {
             searchPool = nil
             currentSlots = baseSlots
+        } else if let searchPool {
+            currentSlots = searchPool
         } else {
-            if searchPool == nil {
-                searchPool = slotManager?.searchPool() ?? baseSlots
-            }
-            currentSlots = searchPool ?? baseSlots
+            // Filter the already-loaded cards immediately and widen the pool off
+            // the main thread, so the first keystroke never stalls.
+            currentSlots = baseSlots
+            loadSearchPool()
         }
 
         rebuildRows()
@@ -956,6 +961,22 @@ public final class HUDPanel {
         layoutPanel()
         scrollToTop()
         updateFilterBar()
+    }
+
+    private func loadSearchPool() {
+        guard !isLoadingSearchPool else { return }
+        isLoadingSearchPool = true
+        let slots = slotManager
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let pool = slots?.searchPool() ?? []
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.isLoadingSearchPool = false
+                guard !self.filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+                self.searchPool = pool
+                self.refreshRowsForFilter()
+            }
+        }
     }
 
     private func updateFilterBar() {
@@ -1198,7 +1219,6 @@ public final class HUDPanel {
         let width = currentPanelWidth
         let size = NSSize(width: width, height: height)
 
-        panel.setContentSize(size)
         rootView.frame = NSRect(origin: .zero, size: size)
 
         let contentX = padding
@@ -1234,7 +1254,23 @@ public final class HUDPanel {
         }
 
         layoutSelectionBadge()
-        panel.setFrameOrigin(panelOrigin(size: size, focusedTextFrame: focusedTextFrame))
+
+        let targetFrame = NSRect(
+            origin: panelOrigin(size: size, focusedTextFrame: focusedTextFrame),
+            size: size
+        )
+        // Animate height changes (the filter bar appearing/clearing) after the
+        // first layout, so the register grows/shrinks instead of jumping.
+        if panel.isVisible, didInitialLayout, !reduceMotion, panel.frame.size != size {
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = 0.20
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.22, 0.90, 0.24, 1.0)
+                panel.animator().setFrame(targetFrame, display: true)
+            }
+        } else {
+            panel.setFrame(targetFrame, display: true)
+            didInitialLayout = true
+        }
     }
 
     private func visibleFrame(containing point: NSPoint) -> NSRect {
@@ -2252,7 +2288,15 @@ private final class HUDRowView: NSView {
             image = cachedStackDragImage
         } else {
             writers = cachedDragWriters
-            image = cachedDragImage
+            if let cachedDragImage {
+                image = cachedDragImage
+            } else if let entry {
+                let built = lightweightDragImage(for: entry)
+                cachedDragImage = built
+                image = built
+            } else {
+                image = nil
+            }
         }
         guard !writers.isEmpty else { return }
         guard let image else { return }
@@ -2443,7 +2487,9 @@ private final class HUDRowView: NSView {
 
     private func buildDragCache(for entry: ClipEntry) {
         cachedDragWriters = pasteboardWriters(for: entry)
-        cachedDragImage = lightweightDragImage(for: entry)
+        // The drag ghost is expensive to draw; build it on first drag instead of
+        // for every row on every filter keystroke.
+        cachedDragImage = nil
         updateStackDragCache(entries: [], signature: nil)
     }
 
