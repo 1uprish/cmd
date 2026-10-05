@@ -77,6 +77,10 @@
   p { margin: 0 0 14px; }
   .muted { color: var(--text-2); }
   .small { font-size: var(--step--1); letter-spacing: 0.005em; }
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 
   a { color: var(--text); text-decoration: none; }
   a:hover { text-decoration: underline; }
@@ -205,19 +209,19 @@
 
   <hr>
 
-  <p>copy stuff like normal. hold <kbd>cmd</kbd><kbd>v</kbd> and a small window shows up next to whatever you're typing in. click an item and it pastes. type to filter if you've copied too much.</p>
+  <p>copy stuff like normal. hold <kbd><span class="sr-only">command</span>⌘</kbd><kbd>V</kbd> and a small window shows up next to whatever you're typing in. click an item and it pastes. type to filter if you've copied too much.</p>
 
   <h2>how it works</h2>
   <ol>
     <li>copy like you always do</li>
-    <li>hold <kbd>cmd</kbd><kbd>v</kbd>, the window opens by your cursor</li>
+    <li>hold <kbd><span class="sr-only">command</span>⌘</kbd><kbd>V</kbd>, the window opens by your cursor</li>
     <li>click something to paste it, or type to narrow things down</li>
   </ol>
 
   <figure class="video">
     <video src="videos/01-hud.mp4" poster="videos/01-hud-poster.jpg" muted playsinline preload="metadata"></video>
     <button class="replay" type="button" aria-label="replay">replay</button>
-    <figcaption>hold cmd v to open the register.</figcaption>
+    <figcaption>hold ⌘V to open the register.</figcaption>
   </figure>
 
   <figure class="video">
@@ -229,14 +233,14 @@
   <figure class="video">
     <video src="videos/07-gather.mp4" poster="videos/07-gather-poster.jpg" muted playsinline preload="metadata"></video>
     <button class="replay" type="button" aria-label="replay">replay</button>
-    <figcaption>tap cmd twice to gather several copies into one.</figcaption>
+    <figcaption>tap ⌘ twice to gather several copies into one.</figcaption>
   </figure>
 
   <h2>what it keeps</h2>
   <ul>
     <li>text, links, code, files, colors, images, rich text</li>
     <li>search: filter as you type. the history window searches everything, even by meaning.</li>
-    <li>gather: tap cmd twice to combine a bunch of copies into one paste</li>
+    <li>gather: tap ⌘ twice to combine a bunch of copies into one paste</li>
     <li>drag and drop: drag a clip straight into any app</li>
     <li>images: thumbnails with a hover preview, and you can pull text out of screenshots</li>
     <li>transforms: paste as plain text, uppercase, json, base64, and more</li>
