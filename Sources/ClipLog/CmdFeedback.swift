@@ -19,6 +19,11 @@ enum CmdFeedbackSound {
 
     static func play(_ moment: Moment) {
         guard ClipLogSettings.shared.feedbackSoundsEnabled else { return }
+        preview()
+    }
+
+    /// Plays regardless of the setting, so Settings can offer a preview.
+    static func preview() {
         guard let sound = sound() else { return }
         // Restart so rapid commits each get their own poke.
         sound.stop()

@@ -106,7 +106,6 @@ public struct SettingsView: View {
     private func card<Content: View>(
         _ title: String,
         icon: String,
-        color: Color,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -144,7 +143,7 @@ public struct SettingsView: View {
     // MARK: - Trigger
 
     private var triggerCard: some View {
-        card("Trigger", icon: "hand.tap.fill", color: .secondary) {
+        card("Trigger", icon: "hand.tap.fill") {
             row(label: "Hold ⌘V for") {
                 Text("\(settings.holdThresholdMs) ms")
                     .font(.system(.body, design: .monospaced))
@@ -169,7 +168,7 @@ public struct SettingsView: View {
     // MARK: - HUD Appearance
 
     private var appearanceCard: some View {
-        card("HUD Appearance", icon: "rectangle.inset.filled", color: .secondary) {
+        card("HUD Appearance", icon: "rectangle.inset.filled") {
             row(label: "Card opacity") {
                 Text(String(format: "%.0f%%", settings.hudOpacity * 100))
                     .font(.system(.body, design: .monospaced))
@@ -355,7 +354,7 @@ public struct SettingsView: View {
     // MARK: - Privacy
 
     private var privacyCard: some View {
-        card("Privacy", icon: "lock.shield.fill", color: .secondary) {
+        card("Privacy", icon: "lock.shield.fill") {
             if settings.userExcludedBundles.isEmpty {
                 HStack {
                     Image(systemName: "checkmark.circle")
@@ -424,7 +423,7 @@ public struct SettingsView: View {
     // MARK: - Storage
 
     private var storageCard: some View {
-        card("History & Retention", icon: "externaldrive.fill", color: .secondary) {
+        card("History & Retention", icon: "externaldrive.fill") {
             row(label: "Keep history for") {
                 Picker("Retention", selection: Binding(
                     get: { settings.retentionDays },
@@ -473,7 +472,7 @@ public struct SettingsView: View {
     // MARK: - Diagnostics
 
     private var diagnosticsCard: some View {
-        card("Troubleshooting", icon: "waveform.path.ecg", color: .secondary) {
+        card("Troubleshooting", icon: "waveform.path.ecg") {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remote anomaly reports")
@@ -515,7 +514,7 @@ public struct SettingsView: View {
     // MARK: - General
 
     private var generalCard: some View {
-        card("General", icon: "gearshape.fill", color: .gray) {
+        card("General", icon: "gearshape.fill") {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Launch at login")
@@ -543,9 +542,19 @@ public struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                Button {
+                    CmdFeedbackSound.preview()
+                } label: {
+                    Image(systemName: "speaker.wave.2.fill")
+                }
+                .buttonStyle(.borderless)
+                .help("Play a preview")
                 Toggle("", isOn: Binding(
                     get: { settings.feedbackSoundsEnabled },
-                    set: { settings.feedbackSoundsEnabled = $0 }
+                    set: { enabled in
+                        settings.feedbackSoundsEnabled = enabled
+                        if enabled { CmdFeedbackSound.preview() }
+                    }
                 ))
                 .labelsHidden()
             }
