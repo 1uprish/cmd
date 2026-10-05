@@ -1979,6 +1979,8 @@ private final class HUDRowView: NSView {
         thumbnailView.wantsLayer = true
         thumbnailView.layer?.masksToBounds = true
         thumbnailView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.22).cgColor
+        thumbnailView.layer?.borderWidth = 0.5
+        thumbnailView.layer?.borderColor = NSColor.white.withAlphaComponent(0.12).cgColor
         thumbnailView.isHidden = true
 
         appNameLabel.textColor = .white
@@ -2077,12 +2079,16 @@ private final class HUDRowView: NSView {
 
         let left = scaled(16)
         let right = scaled(14)
-        let iconSize: CGFloat = isEmptyRow ? 0 : scaled(46)
-        let thumbnailSize = NSSize(width: scaled(72), height: scaled(52))
-        let thumbnailGap: CGFloat = thumbnailView.isHidden ? 0 : scaled(14)
+        // When there is a thumbnail, it is the content: show it and drop the app
+        // icon so two similar squares don't compete. The app name still labels it.
+        let hasThumbnail = !thumbnailView.isHidden
+        let iconSize: CGFloat = (isEmptyRow || hasThumbnail) ? 0 : scaled(46)
+        let thumbnailSize = NSSize(width: scaled(84), height: scaled(56))
+        let thumbnailGap: CGFloat = hasThumbnail ? scaled(14) : 0
         let buttonSize: CGFloat = copyButton.isHidden ? 0 : scaled(30)
         let timeWidth: CGFloat = timestampLabel.stringValue.isEmpty ? 0 : scaled(76)
 
+        appIconView.isHidden = isEmptyRow || hasThumbnail
         appIconView.frame = NSRect(
             x: left,
             y: (bounds.height - iconSize) / 2,
@@ -2090,17 +2096,17 @@ private final class HUDRowView: NSView {
             height: iconSize
         )
 
-        if !thumbnailView.isHidden {
+        if hasThumbnail {
             thumbnailView.frame = NSRect(
-                x: left + iconSize + scaled(12),
+                x: left,
                 y: (bounds.height - thumbnailSize.height) / 2,
                 width: thumbnailSize.width,
                 height: thumbnailSize.height
             )
         }
 
-        let thumbnailWidth = thumbnailView.isHidden ? 0 : thumbnailSize.width + thumbnailGap
-        let textX = isEmptyRow ? left : left + iconSize + scaled(14) + thumbnailWidth
+        let leadingWidth = hasThumbnail ? thumbnailSize.width + thumbnailGap : iconSize + scaled(14)
+        let textX = isEmptyRow ? left : left + leadingWidth
         let trailingControls = timeWidth + buttonSize + (buttonSize > 0 ? scaled(12) : 0) + scaled(8)
         let textWidth = max(80, bounds.width - textX - right - trailingControls)
 
@@ -2396,7 +2402,7 @@ private final class HUDRowView: NSView {
 
     private func configureThumbnail(for entry: ClipEntry) {
         clearThumbnail()
-        let size = NSSize(width: scaled(72), height: scaled(52))
+        let size = NSSize(width: scaled(84), height: scaled(56))
         activeThumbnailRequest = HUDThumbnailCache.shared.request(entry: entry, size: size) { [weak self] request, image in
             guard let self,
                   self.activeThumbnailRequest == request,

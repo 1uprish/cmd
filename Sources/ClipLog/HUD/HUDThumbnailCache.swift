@@ -93,6 +93,37 @@ final class HUDThumbnailCache {
         guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
             return nil
         }
-        return NSImage(cgImage: cgImage, size: size)
+        return aspectFilled(cgImage: cgImage, size: size) ?? NSImage(cgImage: cgImage, size: size)
+    }
+
+    /// Crop to fill the target box (Photos/Messages style) so thumbnails read as
+    /// a tidy grid instead of letterboxed, mismatched rectangles. Done with Core
+    /// Graphics so it stays off the main thread.
+    private func aspectFilled(cgImage: CGImage, size: NSSize) -> NSImage? {
+        let scaleFactor: CGFloat = 2
+        let targetWidth = max(1, Int((size.width * scaleFactor).rounded()))
+        let targetHeight = max(1, Int((size.height * scaleFactor).rounded()))
+        guard let context = CGContext(
+            data: nil,
+            width: targetWidth,
+            height: targetHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        let sourceWidth = CGFloat(cgImage.width)
+        let sourceHeight = CGFloat(cgImage.height)
+        let fillScale = max(CGFloat(targetWidth) / sourceWidth, CGFloat(targetHeight) / sourceHeight)
+        let drawWidth = sourceWidth * fillScale
+        let drawHeight = sourceHeight * fillScale
+        let origin = CGPoint(
+            x: (CGFloat(targetWidth) - drawWidth) / 2,
+            y: (CGFloat(targetHeight) - drawHeight) / 2
+        )
+        context.draw(cgImage, in: CGRect(origin: origin, size: CGSize(width: drawWidth, height: drawHeight)))
+        guard let cropped = context.makeImage() else { return nil }
+        return NSImage(cgImage: cropped, size: size)
     }
 }
