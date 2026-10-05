@@ -108,6 +108,24 @@ public final class MenuBarController: NSObject {
         historyItem.target = self
         menu.addItem(historyItem)
 
+        let recent = (try? store.recent(limit: 5)) ?? []
+        if !recent.isEmpty {
+            let recentItem = NSMenuItem(title: "Recent", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for entry in recent {
+                let item = NSMenuItem(
+                    title: Self.recentTitle(for: entry),
+                    action: #selector(copyRecent(_:)),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = entry
+                submenu.addItem(item)
+            }
+            recentItem.submenu = submenu
+            menu.addItem(recentItem)
+        }
+
         let featuresItem = NSMenuItem(
             title: "Features & Guide",
             action: #selector(showFeatures),
@@ -159,6 +177,14 @@ public final class MenuBarController: NSObject {
         menu.addItem(clearItem)
 
         menu.addItem(.separator())
+
+        let aboutItem = NSMenuItem(
+            title: "About cmd",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        )
+        aboutItem.target = self
+        menu.addItem(aboutItem)
 
         let quitItem = NSMenuItem(
             title: "Quit cmd",
@@ -360,6 +386,26 @@ public final class MenuBarController: NSObject {
         // Rebuild the menu so the Recent section reflects the cleared state.
         statusItem?.menu = buildMenu()
         DiagnosticsLogbook.shared.actionOutput(feature: "menu_bar", action: "clear_all_history", details: ["success": "true"])
+    }
+
+    @objc private func copyRecent(_ sender: NSMenuItem) {
+        guard let entry = sender.representedObject as? ClipEntry else { return }
+        ClipPasteboardWriter.write(entry)
+    }
+
+    @objc private func showAbout() {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let alert = NSAlert()
+        alert.messageText = "cmd"
+        alert.informativeText = "Clipboard history for macOS.\nVersion \(version)"
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private static func recentTitle(for entry: ClipEntry) -> String {
+        let preview = entry.previewText.replacingOccurrences(of: "\n", with: " ")
+        let trimmed = preview.count > 42 ? String(preview.prefix(42)) + "…" : preview
+        return trimmed.isEmpty ? entry.sourceAppName : "\(entry.sourceAppName) — \(trimmed)"
     }
 
     // MARK: - Helpers
