@@ -34,8 +34,13 @@
     font-optical-sizing: auto;
     -webkit-font-smoothing: antialiased;
   }
-  .page { max-width: 680px; margin: 0 auto; padding: 96px 28px 120px; }
+  .page { position: relative; max-width: 680px; margin: 0 auto; padding: 96px 28px 120px; }
   @media (max-width: 640px) { .page { padding: 56px 20px 90px; } }
+  /* quiet drafting frame around the canvas */
+  .page::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    border: 1px dashed var(--line);
+  }
 
   .chrome {
     position: fixed; inset: 0 0 auto; z-index: 20;
@@ -72,9 +77,14 @@
     text-wrap: balance;
   }
   h2 {
+    position: relative;
     display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
     font-size: var(--step-1); font-weight: 600; line-height: 1.25;
-    letter-spacing: -0.012em; margin: 48px 0 12px;
+    letter-spacing: -0.012em; margin: 48px 0 12px; padding-top: 26px;
+  }
+  h2::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 1px;
+    background-image: repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
   }
   h2 .num {
     font: 500 var(--step--1)/1 ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -101,7 +111,7 @@
   :focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 4px; }
   hr {
     border: 0; height: 1px; margin: 40px 0;
-    background: linear-gradient(90deg, transparent, var(--line) 18%, var(--line) 82%, transparent);
+    background-image: repeating-linear-gradient(90deg, var(--line) 0 5px, transparent 5px 10px);
   }
   ul, ol { margin: 0 0 14px; padding-left: 20px; }
   li { margin: 5px 0; }
@@ -294,8 +304,6 @@
     <button class="replay" type="button" aria-label="replay">replay</button>
     <figcaption>and the settings to make it yours.</figcaption>
   </figure>
-
-  <hr>
 
   <h2><span class="num" aria-hidden="true">06</span><span class="title">download</span><span class="desc">drag it in and grant access.</span></h2>
   <p>drag cmd.app into applications, then give it accessibility access when it asks.</p>
