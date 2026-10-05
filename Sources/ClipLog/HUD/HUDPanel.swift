@@ -147,7 +147,7 @@ public final class HUDPanel {
     private let headerScrim = HUDHeaderScrimView()
     private let titleLabel = NSTextField(labelWithString: "cmd")
     private let subtitleLabel = NSTextField(labelWithString: "Recent clipboard")
-    private let filterBadge = NSTextField(labelWithString: "")
+    private let filterBar = HUDFilterBarView()
     private let selectionBadge = NSTextField(labelWithString: "")
     private let scrollView = NSScrollView()
     private let rowContainer = HUDRowsDocumentView()
@@ -273,16 +273,6 @@ public final class HUDPanel {
         subtitleLabel.shadow?.shadowBlurRadius = 4
         subtitleLabel.shadow?.shadowOffset = CGSize(width: 0, height: -1)
 
-        filterBadge.font = CmdTypography.monoFont(size: 12, weight: .semibold)
-        filterBadge.textColor = .white
-        filterBadge.alignment = .center
-        filterBadge.drawsBackground = true
-        filterBadge.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.85)
-        filterBadge.wantsLayer = true
-        filterBadge.layer?.cornerRadius = 8
-        filterBadge.layer?.masksToBounds = true
-        filterBadge.isHidden = true
-
         selectionBadge.font = CmdTypography.font(size: 11, weight: .semibold)
         selectionBadge.textColor = .white
         selectionBadge.alignment = .center
@@ -305,10 +295,11 @@ public final class HUDPanel {
         headerScrim.isHidden = true
         titleLabel.isHidden = true
         subtitleLabel.isHidden = true
-        filterBadge.isHidden = true
+        filterBar.isHidden = true
         rootView.addSubview(scrollView)
         rootView.addSubview(topScrollFade)
         rootView.addSubview(bottomScrollFade)
+        rootView.addSubview(filterBar)
         rootView.addSubview(selectionBadge)
         topScrollFade.isHidden = true
         bottomScrollFade.isHidden = true
@@ -363,7 +354,7 @@ public final class HUDPanel {
         selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
-        filterBadge.isHidden = true
+        filterBar.isHidden = true
         selectionBadge.isHidden = true
         dragRestoreSnapshot = nil
         lastCursorLocation = NSEvent.mouseLocation
@@ -470,7 +461,7 @@ public final class HUDPanel {
         multiSelectionAnchorDisplayIndex = snapshot.anchorDisplayIndex
         rebuildRows()
         layoutPanel()
-        updateFilterBadge()
+        updateFilterBar()
         updateSelection()
         scrollSelectedRowToVisible()
         dragRestoreSnapshot = nil
@@ -976,17 +967,17 @@ public final class HUDPanel {
         currentPanelWidth = preferredPanelWidth(for: focusedTextFrame)
         layoutPanel()
         scrollToTop()
-        updateFilterBadge()
+        updateFilterBar()
     }
 
-    private func updateFilterBadge() {
+    private func updateFilterBar() {
         let cleanFilter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        filterBadge.isHidden = true
-        if cleanFilter.isEmpty {
-            filterBadge.stringValue = ""
-        } else {
-            filterBadge.stringValue = "  \(cleanFilter) · \(displayedIndices().count)  "
+        guard !cleanFilter.isEmpty else {
+            filterBar.isHidden = true
+            return
         }
+        filterBar.configure(query: cleanFilter, count: displayedIndices().count)
+        filterBar.isHidden = false
     }
 
     private func updateHintText() {
@@ -1203,7 +1194,10 @@ public final class HUDPanel {
         let padding = scaled(Layout.padding)
         let needsScroller = rowCount > visibleCount
         let gutter = needsScroller ? scaled(Layout.scrollbarGutter) : 0
-        let height = padding + scaled(Layout.headerHeight) + visibleRowsHeight + padding
+        let hasFilter = !filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let filterBarHeight = hasFilter ? scaled(30) : 0
+        let filterGap = hasFilter ? scaled(8) : 0
+        let height = padding + filterBarHeight + filterGap + visibleRowsHeight + padding
         let width = currentPanelWidth
         let size = NSSize(width: width, height: height)
 
@@ -1220,6 +1214,15 @@ public final class HUDPanel {
             width: scrollWidth,
             height: visibleRowsHeight
         )
+        updateFilterBar()
+        if hasFilter {
+            filterBar.frame = NSRect(
+                x: contentX,
+                y: padding + visibleRowsHeight + filterGap,
+                width: cardWidth,
+                height: filterBarHeight
+            )
+        }
         let fadeHeight = scaled(20)
         topScrollFade.frame = NSRect(
             x: scrollView.frame.minX,
@@ -1766,6 +1769,91 @@ public final class HUDPanel {
         visibilityLock.withLock {
             _isVisible && activeSessionID == sessionID
         }
+    }
+}
+
+// MARK: - HUDFilterBarView
+//
+// A superlight search bar shown at the top of the HUD while a filter is typed,
+// so the query is visible instead of silently applied.
+
+private final class HUDFilterBarView: NSView {
+
+    private let iconView = NSImageView()
+    private let queryLabel = NSTextField(labelWithString: "")
+    private let countLabel = NSTextField(labelWithString: "")
+    private let caret = NSView()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.cornerRadius = 9
+        layer?.masksToBounds = true
+        layer?.backgroundColor = NSColor.white.withAlphaComponent(0.10).cgColor
+        layer?.borderColor = NSColor.white.withAlphaComponent(0.14).cgColor
+        layer?.borderWidth = 0.5
+
+        iconView.image = NSImage(systemSymbolName: "magnifyingglass", accessibilityDescription: nil)
+        iconView.contentTintColor = NSColor.white.withAlphaComponent(0.5)
+        iconView.imageScaling = .scaleProportionallyDown
+
+        queryLabel.font = CmdTypography.font(size: 13)
+        queryLabel.textColor = NSColor.white.withAlphaComponent(0.92)
+        queryLabel.lineBreakMode = .byTruncatingTail
+
+        countLabel.font = CmdTypography.font(size: 11, weight: .medium)
+        countLabel.textColor = NSColor.white.withAlphaComponent(0.45)
+        countLabel.alignment = .right
+
+        caret.wantsLayer = true
+        caret.layer?.backgroundColor = NSColor.white.withAlphaComponent(0.85).cgColor
+        let blink = CABasicAnimation(keyPath: "opacity")
+        blink.fromValue = 1
+        blink.toValue = 0
+        blink.duration = 0.55
+        blink.autoreverses = true
+        blink.repeatCount = .infinity
+        caret.layer?.add(blink, forKey: "cmd.filter.caret")
+
+        addSubview(iconView)
+        addSubview(queryLabel)
+        addSubview(countLabel)
+        addSubview(caret)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    func configure(query: String, count: Int) {
+        queryLabel.stringValue = query
+        countLabel.stringValue = count == 1 ? "1 match" : "\(count) matches"
+        needsLayout = true
+    }
+
+    override func layout() {
+        super.layout()
+        let height = bounds.height
+        let inset: CGFloat = 10
+        let iconSize: CGFloat = 13
+        iconView.frame = NSRect(x: inset, y: (height - iconSize) / 2, width: iconSize, height: iconSize)
+
+        let countWidth = ceil(countLabel.intrinsicContentSize.width)
+        countLabel.frame = NSRect(
+            x: max(inset, bounds.width - inset - countWidth),
+            y: (height - 15) / 2,
+            width: countWidth,
+            height: 15
+        )
+
+        let textX = iconView.frame.maxX + 7
+        let textWidth = max(0, countLabel.frame.minX - 8 - textX)
+        let textHeight: CGFloat = 17
+        queryLabel.frame = NSRect(x: textX, y: (height - textHeight) / 2, width: textWidth, height: textHeight)
+
+        let measured = (queryLabel.stringValue as NSString)
+            .size(withAttributes: [.font: queryLabel.font as Any]).width
+        let caretX = min(textX + measured + 2, countLabel.frame.minX - 8)
+        caret.frame = NSRect(x: caretX, y: (height - 14) / 2, width: 1.5, height: 14)
     }
 }
 
