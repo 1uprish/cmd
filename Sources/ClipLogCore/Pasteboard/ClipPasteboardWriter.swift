@@ -404,13 +404,30 @@ public enum ClipPasteboardWriter {
         return item
     }
 
-    /// Drag-only plain text item. It advertises only `public.utf8-plain-text`
-    /// (no RTF, no file URL) because some drop targets reject a drag that also
-    /// offers richer types or treat a file URL as an attachment instead of text.
+    /// Drag-only plain text item. It advertises the plain string and RTF (so
+    /// text-accepting targets insert it) *and* a temporary `.txt` file URL (so
+    /// file-only drop targets, which ignore text, still receive the content as
+    /// an attachment). This mirrors how Finder drags a text file.
     private static func dragTextItem(_ value: String) -> NSPasteboardItem {
-        let item = NSPasteboardItem()
-        item.setString(value, forType: .string)
+        let item = plainTextItem(value)
+        if let fileURL = temporaryTextFileURL(value: value) {
+            item.setString(fileURL.absoluteString, forType: .fileURL)
+            item.setPropertyList([fileURL.path], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        }
         return item
+    }
+
+    private static func temporaryTextFileURL(value: String) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmdDragText", isDirectory: true)
+        let fileURL = directory.appendingPathComponent("\(UUID().uuidString).txt")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(value.utf8).write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            return nil
+        }
     }
 
     private static func urlItem(_ value: String) -> NSPasteboardItem {

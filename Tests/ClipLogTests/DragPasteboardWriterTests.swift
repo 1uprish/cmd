@@ -15,12 +15,15 @@ final class DragPasteboardWriterTests: XCTestCase {
         )
     }
 
-    func test_text_drag_advertises_only_plain_text() {
+    func test_text_drag_advertises_string_and_file_url() {
         let writers = ClipPasteboardWriter.dragPasteboardWriters(for: entry(.text, "hello world"))
         let item = writers.compactMap { $0 as? NSPasteboardItem }.first
         let types = item?.types ?? []
         XCTAssertEqual(item?.string(forType: .string), "hello world")
-        XCTAssertEqual(types, [.string], "text drags should advertise only public.utf8-plain-text")
+        // Text so text fields insert it; file URL so file-only drop targets
+        // (which ignore text) still receive it as an attachment.
+        XCTAssertTrue(types.contains(.string))
+        XCTAssertTrue(types.contains(.fileURL))
     }
 
     func test_code_drag_advertises_string() {
