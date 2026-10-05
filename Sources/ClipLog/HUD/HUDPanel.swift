@@ -1873,6 +1873,8 @@ private final class HUDRowView: NSView {
     private var dragStarted = false
     private var mouseDownLocation = NSPoint.zero
     private var copyResetTimer: Timer?
+    private var revealTimer: Timer?
+    private var isRevealingSensitive = false
     private var cardOpacity: CGFloat = 1.0
     private var sizeScale: CGFloat = 1.0
     private var cachedDragImage: NSImage?
@@ -1964,6 +1966,7 @@ private final class HUDRowView: NSView {
     }
 
     func configure(entry: ClipEntry, index: Int) {
+        cancelSensitiveReveal()
         self.entry = entry
         self.index = index
         isEmptyRow = false
@@ -2094,9 +2097,41 @@ private final class HUDRowView: NSView {
             NSCursor.closedHand.set()
         }
         animateDragLift(active: true)
+        scheduleSensitiveReveal()
+    }
+
+    // Deliberate press-and-hold reveals a redacted item so people stay in
+    // control of secrets without leaving them exposed by default.
+    private func scheduleSensitiveReveal() {
+        guard entry?.isSensitive == true else { return }
+        revealTimer?.invalidate()
+        revealTimer = Timer.scheduledTimer(withTimeInterval: 0.35, repeats: false) { [weak self] _ in
+            self?.setSensitiveRevealed(true)
+        }
+    }
+
+    private func cancelSensitiveReveal() {
+        revealTimer?.invalidate()
+        revealTimer = nil
+        if isRevealingSensitive { setSensitiveRevealed(false) }
+    }
+
+    private func setSensitiveRevealed(_ revealed: Bool) {
+        guard let entry, entry.isSensitive else { return }
+        isRevealingSensitive = revealed
+        if revealed {
+            previewLabel.stringValue = String(data: entry.contentData, encoding: .utf8) ?? entry.previewText
+            previewLabel.textColor = .systemYellow
+            typeLabel.stringValue = "REVEALED"
+        } else {
+            previewLabel.stringValue = previewText(for: entry)
+            previewLabel.textColor = NSColor.white.withAlphaComponent(0.72)
+            typeLabel.stringValue = "SENSITIVE"
+        }
     }
 
     override func mouseDragged(with event: NSEvent) {
+        cancelSensitiveReveal()
         guard !isEmptyRow, let index, !dragStarted else { return }
         let dragStart = Date()
         let point = convert(event.locationInWindow, from: nil)
@@ -2172,6 +2207,7 @@ private final class HUDRowView: NSView {
     override func mouseExited(with event: NSEvent) {
         hovering = false
         NSCursor.arrow.set()
+        cancelSensitiveReveal()
         applyChrome()
         animateHoverLift(active: false)
     }
@@ -2181,7 +2217,9 @@ private final class HUDRowView: NSView {
             NSCursor.openHand.set()
         }
         animateDragLift(active: false)
-        guard !dragStarted, let index else { return }
+        let wasRevealing = isRevealingSensitive
+        cancelSensitiveReveal()
+        guard !wasRevealing, !dragStarted, let index else { return }
         let point = convert(event.locationInWindow, from: nil)
         guard !copyButton.frame.contains(point) else { return }
         if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.shift) {
