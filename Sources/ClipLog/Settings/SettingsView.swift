@@ -21,10 +21,13 @@ public struct SettingsView: View {
             sidebar
             Divider()
             ScrollView(.vertical, showsIndicators: true) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Text((section ?? .capture).title)
+                        .font(.system(size: 20, weight: .semibold))
+                        .tracking(-0.3)
                     detailContent
                 }
-                .padding(22)
+                .padding(24)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
@@ -105,45 +108,33 @@ public struct SettingsView: View {
 
     private func card<Content: View>(
         _ title: String,
-        icon: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Header bar
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 20)
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .background(Color(nsColor: .controlBackgroundColor).opacity(0.72))
+        VStack(alignment: .leading, spacing: 7) {
+            // Small secondary section label, System Settings style.
+            Text(title)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.leading, 4)
 
-            Divider()
-
-            // Body
             VStack(alignment: .leading, spacing: 14) {
                 content()
             }
-            .padding(16)
+            .padding(14)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(nsColor: .windowBackgroundColor).opacity(0.96))
+            .background(Color(nsColor: .controlBackgroundColor))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(Color(nsColor: .separatorColor).opacity(0.45), lineWidth: 0.5)
+            )
         }
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(Color(nsColor: .separatorColor).opacity(0.75), lineWidth: 0.5)
-        )
     }
 
     // MARK: - Trigger
 
     private var triggerCard: some View {
-        card("Trigger", icon: "hand.tap.fill") {
+        card("Trigger") {
             row(label: "Hold ⌘V for") {
                 Text("\(settings.holdThresholdMs) ms")
                     .font(.system(.body, design: .monospaced))
@@ -168,7 +159,7 @@ public struct SettingsView: View {
     // MARK: - HUD Appearance
 
     private var appearanceCard: some View {
-        card("HUD Appearance", icon: "rectangle.inset.filled") {
+        card("HUD Appearance") {
             row(label: "Card opacity") {
                 Text(String(format: "%.0f%%", settings.hudOpacity * 100))
                     .font(.system(.body, design: .monospaced))
@@ -354,7 +345,7 @@ public struct SettingsView: View {
     // MARK: - Privacy
 
     private var privacyCard: some View {
-        card("Privacy", icon: "lock.shield.fill") {
+        card("Privacy") {
             if settings.userExcludedBundles.isEmpty {
                 HStack {
                     Image(systemName: "checkmark.circle")
@@ -423,7 +414,7 @@ public struct SettingsView: View {
     // MARK: - Storage
 
     private var storageCard: some View {
-        card("History & Retention", icon: "externaldrive.fill") {
+        card("History & Retention") {
             row(label: "Keep history for") {
                 Picker("Retention", selection: Binding(
                     get: { settings.retentionDays },
@@ -472,7 +463,7 @@ public struct SettingsView: View {
     // MARK: - Diagnostics
 
     private var diagnosticsCard: some View {
-        card("Troubleshooting", icon: "waveform.path.ecg") {
+        card("Troubleshooting") {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Remote anomaly reports")
@@ -514,7 +505,7 @@ public struct SettingsView: View {
     // MARK: - General
 
     private var generalCard: some View {
-        card("General", icon: "gearshape.fill") {
+        card("General") {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Launch at login")
