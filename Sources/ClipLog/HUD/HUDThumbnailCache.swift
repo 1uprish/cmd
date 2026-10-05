@@ -31,8 +31,16 @@ final class HUDThumbnailCache {
             entryID: entry.id
         )
         if let image = cache.object(forKey: request.key as NSString) {
-            DispatchQueue.main.async {
+            // Cache hits resolve synchronously when already on main: rows
+            // rebuild wholesale on every filter keystroke, and an async hop
+            // here blanks the thumbnail for a frame (visible flash) and
+            // relayouts the row from icon-mode to thumbnail-mode.
+            if Thread.isMainThread {
                 completion(request, image)
+            } else {
+                DispatchQueue.main.async {
+                    completion(request, image)
+                }
             }
             return request
         }
