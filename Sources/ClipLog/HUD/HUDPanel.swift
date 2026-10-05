@@ -155,8 +155,6 @@ public final class HUDPanel {
     private var rowViews: [HUDRowView] = []
     private var currentSlots: [ClipEntry] = []
     private var baseSlots: [ClipEntry] = []
-    private var searchPool: [ClipEntry]?
-    private var isLoadingSearchPool = false
     private var didInitialLayout = false
     private var filterText = ""
     private var selectedDisplayIndex: Int?
@@ -325,8 +323,6 @@ public final class HUDPanel {
 
         currentSlots = Array(slots.prefix(min(Layout.maxEntries, ClipLogSettings.shared.hudCardCount)))
         baseSlots = currentSlots
-        searchPool = nil
-        isLoadingSearchPool = false
         didInitialLayout = false
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
@@ -940,20 +936,8 @@ public final class HUDPanel {
         multiSelectedOriginalIndices = []
         multiSelectionAnchorDisplayIndex = selectedDisplayIndex
 
-        // Search beyond the visible cards: the first filter character pulls a
-        // larger window from the store once, then filtering stays in memory.
-        let cleanFilter = filterText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if cleanFilter.isEmpty {
-            searchPool = nil
-            currentSlots = baseSlots
-        } else if let searchPool {
-            currentSlots = searchPool
-        } else {
-            // Filter the already-loaded cards immediately and widen the pool off
-            // the main thread, so the first keystroke never stalls.
-            currentSlots = baseSlots
-            loadSearchPool()
-        }
+        // Filter only the cards already loaded in the HUD, so typing is instant.
+        currentSlots = baseSlots
 
         rebuildRows()
         currentHUDScale = CGFloat(ClipLogSettings.shared.hudSizeScale.clamped(to: 0.85...1.20))
@@ -961,22 +945,6 @@ public final class HUDPanel {
         layoutPanel()
         scrollToTop()
         updateFilterBar()
-    }
-
-    private func loadSearchPool() {
-        guard !isLoadingSearchPool else { return }
-        isLoadingSearchPool = true
-        let slots = slotManager
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let pool = slots?.searchPool() ?? []
-            DispatchQueue.main.async {
-                guard let self else { return }
-                self.isLoadingSearchPool = false
-                guard !self.filterText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-                self.searchPool = pool
-                self.refreshRowsForFilter()
-            }
-        }
     }
 
     private func updateFilterBar() {

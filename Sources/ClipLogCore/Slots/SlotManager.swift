@@ -53,12 +53,6 @@ public final class SlotManager: @unchecked Sendable {
         queue.sync { (try? store.recent(limit: limit)) ?? _slots }
     }
 
-    /// A wider window of recent entries used to search beyond the HUD's visible
-    /// cards. Content is decrypted in memory, so the window is capped.
-    public func searchPool(limit: Int = 500) -> [ClipEntry] {
-        queue.sync { (try? store.recent(limit: limit)) ?? _slots }
-    }
-
     /// Paste a specific entry directly (safe: not affected by concurrent slot shifts).
     @discardableResult
     public func paste(entry: ClipEntry) -> Bool {
