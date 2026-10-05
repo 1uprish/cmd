@@ -73,7 +73,7 @@ final class TapController {
             eventTap.onHUDTrigger = { [weak slots] sessionID in
                 HUDPanel.shared.show(
                     sessionID: sessionID,
-                    slots: slots?.recentEntries(limit: 20) ?? []
+                    slots: slots?.recentEntries(limit: ClipLogSettings.shared.hudCardCount) ?? []
                 )
             }
 

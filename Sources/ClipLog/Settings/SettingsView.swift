@@ -250,11 +250,22 @@ public struct SettingsView: View {
 
             Divider()
 
-            row(label: "Visible rows") {
-                Text("6 with scroll")
-                    .font(.system(.body, design: .monospaced))
-                    .foregroundStyle(.secondary)
+            row(label: "Cards in HUD") {
+                Picker("Cards in HUD", selection: Binding(
+                    get: { settings.hudCardCount },
+                    set: { settings.hudCardCount = $0 }
+                )) {
+                    Text("10").tag(10)
+                    Text("20").tag(20)
+                    Text("30").tag(30)
+                    Text("50").tag(50)
+                    Text("60").tag(60)
+                }
+                .labelsHidden()
+                .fixedSize()
             }
+
+            note("How many recent clips the HUD can scroll through. Six are visible at a time.")
 
             note("Size changes keep the card proportions, text, icons, spacing, and scrollbar gutter aligned.")
 

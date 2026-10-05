@@ -31,7 +31,7 @@ public final class HUDPanel {
         static let rowGap: CGFloat = 10
         static let scrollbarGutter: CGFloat = 18
         static let visibleRows = 6
-        static let maxEntries = 20
+        static let maxEntries = 60
         static let cornerRadius: CGFloat = 24
         static let animationDuration: TimeInterval = 0.22
         static let rowStagger: TimeInterval = 0.018
@@ -348,7 +348,7 @@ public final class HUDPanel {
         removeDismissGuards()
         resetRootLayer()
 
-        currentSlots = Array(slots.prefix(Layout.maxEntries))
+        currentSlots = Array(slots.prefix(min(Layout.maxEntries, ClipLogSettings.shared.hudCardCount)))
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
         filterText = ""
         selectedDisplayIndex = nil

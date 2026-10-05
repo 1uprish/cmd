@@ -19,6 +19,7 @@ public final class ClipLogSettings: ObservableObject {
         static let hudOpacity          = "hudOpacity"
         static let hudSizeScale        = "hudSizeScale"
         static let hudAnimationStyle   = "hudAnimationStyle"
+        static let hudCardCount        = "hudCardCount"
         static let remoteDiagnosticsEnabled = "remoteDiagnosticsEnabled"
         static let remoteDiagnosticsEndpoint = "remoteDiagnosticsEndpoint"
         static let remoteDiagnosticsToken = "remoteDiagnosticsToken"
@@ -155,6 +156,22 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
+    /// How many recent clips the HUD can scroll through.
+    @Published public var hudCardCount: Int {
+        didSet {
+            let allowed = [10, 20, 30, 50, 60]
+            let value = allowed.contains(hudCardCount) ? hudCardCount : 20
+            logSettingChange(
+                name: Keys.hudCardCount,
+                oldValue: "\(oldValue)",
+                newValue: "\(value)",
+                normalized: value != hudCardCount
+            )
+            UserDefaults.standard.set(value, forKey: Keys.hudCardCount)
+            if value != hudCardCount { hudCardCount = value }
+        }
+    }
+
     @Published public var hudAnimationStyle: String {
         didSet {
             let allowed = ["magnetic", "genie", "cascade", "calm"]
@@ -220,6 +237,7 @@ public final class ClipLogSettings: ObservableObject {
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
             Keys.hudAnimationStyle:   "magnetic",
+            Keys.hudCardCount:        20,
             Keys.remoteDiagnosticsEnabled: false,
             Keys.remoteDiagnosticsEndpoint: "",
             Keys.remoteDiagnosticsToken: "",
@@ -236,6 +254,7 @@ public final class ClipLogSettings: ObservableObject {
         hudOpacity          = defaults.double(forKey: Keys.hudOpacity)
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
         hudAnimationStyle   = defaults.string(forKey: Keys.hudAnimationStyle) ?? "magnetic"
+        hudCardCount        = defaults.integer(forKey: Keys.hudCardCount)
         remoteDiagnosticsEnabled = defaults.bool(forKey: Keys.remoteDiagnosticsEnabled)
         remoteDiagnosticsEndpoint = defaults.string(forKey: Keys.remoteDiagnosticsEndpoint) ?? ""
         remoteDiagnosticsToken = defaults.string(forKey: Keys.remoteDiagnosticsToken) ?? ""
@@ -253,6 +272,7 @@ public final class ClipLogSettings: ObservableObject {
         hudOpacity = 1.0
         hudSizeScale = 1.0
         hudAnimationStyle = "magnetic"
+        hudCardCount = 20
         feedbackSoundsEnabled = false
         capturePausedUntil = 0
         remoteDiagnosticsEnabled = false
