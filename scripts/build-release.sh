@@ -180,6 +180,11 @@ if [ -f "$REPO_ROOT/Sources/ClipLog/Resources/AppIcon.icns" ]; then
     cp "$REPO_ROOT/Sources/ClipLog/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
 fi
 
+if [ -f "$REPO_ROOT/Sources/ClipLog/Resources/bencho-poke.wav" ]; then
+    echo "    Copying bencho-poke.wav..."
+    cp "$REPO_ROOT/Sources/ClipLog/Resources/bencho-poke.wav" "$RESOURCES_DIR/bencho-poke.wav"
+fi
+
 # ---------------------------------------------------------------------------
 # 6. Code-sign with hardened runtime
 # ---------------------------------------------------------------------------

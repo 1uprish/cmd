@@ -15,14 +15,22 @@ enum CmdFeedbackSound {
         case capture
     }
 
+    private static var cachedSound: NSSound?
+
     static func play(_ moment: Moment) {
         guard ClipLogSettings.shared.feedbackSoundsEnabled else { return }
-        let name: NSSound.Name
-        switch moment {
-        case .copy:    name = NSSound.Name("Morse")
-        case .paste:   name = NSSound.Name("Tink")
-        case .capture: name = NSSound.Name("Pop")
-        }
-        NSSound(named: name)?.play()
+        guard let sound = sound() else { return }
+        // Restart so rapid commits each get their own poke.
+        sound.stop()
+        sound.play()
+    }
+
+    private static func sound() -> NSSound? {
+        if let cachedSound { return cachedSound }
+        let url = Bundle.main.url(forResource: "bencho-poke", withExtension: "wav")
+            ?? Bundle.module.url(forResource: "bencho-poke", withExtension: "wav")
+        guard let url, let sound = NSSound(contentsOf: url, byReference: true) else { return nil }
+        cachedSound = sound
+        return sound
     }
 }
