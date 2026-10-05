@@ -2714,6 +2714,18 @@ extension HUDRowView: NSDraggingSource {
     }
 
     func draggingSession(_ session: NSDraggingSession, willBeginAt screenPoint: NSPoint) {
+        let types = session.draggingPasteboard.types?.map(\.rawValue).joined(separator: ",") ?? "none"
+        let resolved = session.draggingPasteboard.string(forType: .string) ?? "<nil>"
+        DiagnosticsLogbook.shared.record(
+            "drag_pasteboard_types",
+            category: "drag",
+            details: [
+                "entryType": entry?.contentType.rawValue ?? "unknown",
+                "types": types,
+                "stringLength": "\(resolved.count)",
+                "stringPreview": String(resolved.prefix(40))
+            ]
+        )
         onDragStart?()
     }
 

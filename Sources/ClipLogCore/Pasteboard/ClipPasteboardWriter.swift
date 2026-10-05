@@ -171,6 +171,8 @@ public enum ClipPasteboardWriter {
         case .image:
             guard let item = lazyImageDragItem(for: entry) else { return [] }
             return [item]
+        case .text, .code:
+            return [dragTextItem(String(data: entry.contentData, encoding: .utf8) ?? entry.previewText)]
         case .rich:
             guard let item = lazyRichDragItem(for: entry) else {
                 return [plainTextItem(String(data: entry.contentData, encoding: .utf8) ?? entry.previewText)]
@@ -247,7 +249,8 @@ public enum ClipPasteboardWriter {
         var writers: [NSPasteboardWriting] = []
         let textFragments = entries.compactMap(textFragment(for:))
         if !textFragments.isEmpty {
-            writers.append(plainTextItem(textFragments.joined(separator: "\n")))
+            let joined = textFragments.joined(separator: "\n")
+            writers.append(dragOptimized ? dragTextItem(joined) : plainTextItem(joined))
         }
 
         for entry in entries {
@@ -399,6 +402,32 @@ public enum ClipPasteboardWriter {
             item.setData(rtf, forType: .rtf)
         }
         return item
+    }
+
+    /// Drag-only plain text item. Besides the string and RTF, it carries a
+    /// temporary `.txt` file URL so drop targets that only accept file/media
+    /// drops still take the item. Text fields prefer the string; media targets
+    /// fall back to the file.
+    private static func dragTextItem(_ value: String) -> NSPasteboardItem {
+        let item = plainTextItem(value)
+        if let fileURL = temporaryTextFileURL(value: value) {
+            item.setString(fileURL.absoluteString, forType: .fileURL)
+            item.setPropertyList([fileURL.path], forType: NSPasteboard.PasteboardType("NSFilenamesPboardType"))
+        }
+        return item
+    }
+
+    private static func temporaryTextFileURL(value: String) -> URL? {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmdDragText", isDirectory: true)
+        let fileURL = directory.appendingPathComponent("\(UUID().uuidString).txt")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try Data(value.utf8).write(to: fileURL, options: .atomic)
+            return fileURL
+        } catch {
+            return nil
+        }
     }
 
     private static func urlItem(_ value: String) -> NSPasteboardItem {
