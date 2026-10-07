@@ -2186,7 +2186,23 @@ private final class HUDRowView: NSView {
     // to be a signpost.
     private func schedulePeek() {
         peekWorkItem?.cancel()
-        guard entry?.contentType == .image, entry?.isSensitive != true else { return }
+        guard let entry else {
+            DiagnosticsLogbook.shared.record("peek_skipped", category: "hud", details: ["reason": "no_entry"])
+            return
+        }
+        guard entry.contentType == .image else {
+            DiagnosticsLogbook.shared.record(
+                "peek_skipped",
+                category: "hud",
+                details: ["reason": "not_image", "entryType": entry.contentType.rawValue]
+            )
+            return
+        }
+        guard !entry.isSensitive else {
+            DiagnosticsLogbook.shared.record("peek_skipped", category: "hud", details: ["reason": "sensitive"])
+            return
+        }
+        DiagnosticsLogbook.shared.record("peek_scheduled", category: "hud")
         let item = DispatchWorkItem { [weak self] in self?.presentPeek() }
         peekWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
@@ -2199,9 +2215,32 @@ private final class HUDRowView: NSView {
     }
 
     private func presentPeek() {
-        guard let entry, entry.contentType == .image, !entry.isSensitive, !isEmptyRow else { return }
-        guard let window, let image = fullImage(for: entry) else { return }
+        guard let entry, entry.contentType == .image, !entry.isSensitive, !isEmptyRow else {
+            DiagnosticsLogbook.shared.record("peek_abandoned", category: "hud", details: ["reason": "entry_changed"])
+            return
+        }
+        guard let window else {
+            DiagnosticsLogbook.shared.record("peek_abandoned", category: "hud", details: ["reason": "no_window"])
+            return
+        }
+        guard let image = fullImage(for: entry) else {
+            DiagnosticsLogbook.shared.record(
+                "peek_abandoned",
+                category: "hud",
+                details: ["reason": "no_image", "thumbnailLoaded": "\(thumbnailView.image != nil)"]
+            )
+            return
+        }
         let screenRect = window.convertToScreen(convert(bounds, to: nil))
+        DiagnosticsLogbook.shared.record(
+            "peek_shown",
+            category: "hud",
+            details: [
+                "imageWidth": "\(Int(image.size.width))",
+                "imageHeight": "\(Int(image.size.height))",
+                "anchor": NSStringFromRect(screenRect)
+            ]
+        )
         HUDPeekController.shared.show(image: image, near: screenRect)
     }
 
