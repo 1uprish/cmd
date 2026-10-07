@@ -4,8 +4,6 @@ import Foundation
 
 public final class SlotManager: @unchecked Sendable {
 
-    private static let hudEntryLimit = 20
-
     private let store: ClipStore
     private let queue = DispatchQueue(label: "com.cmd.SlotManager", qos: .userInteractive)
     private var _slots: [ClipEntry] = []
@@ -21,8 +19,10 @@ public final class SlotManager: @unchecked Sendable {
             let insertStartedAt = Date()
             try? store.insert(entry)
             let insertMs = Self.milliseconds(since: insertStartedAt)
-            let prewarmEntries = (try? store.recent(limit: Self.hudEntryLimit)) ?? [entry]
-            ClipPasteboardWriter.prewarmDragPayloads(for: prewarmEntries)
+            // Warm only the fresh entry (non-images return immediately): the
+            // HUD warms its visible set on open, so decrypting 20 entries
+            // here on every capture only slows the poll down.
+            ClipPasteboardWriter.prewarmDragPayloads(for: [entry])
 
             let recentStartedAt = Date()
             _slots = (try? store.recent(limit: 5)) ?? _slots
