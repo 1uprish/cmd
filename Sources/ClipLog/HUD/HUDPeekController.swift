@@ -68,7 +68,9 @@ final class HUDPeekController {
     }
 
     func hide() {
-        panel?.orderOut(nil)
+        guard let panel, panel.isVisible else { return }
+        DiagnosticsLogbook.shared.record("peek_hidden", category: "hud")
+        panel.orderOut(nil)
     }
 
     private func ensurePanel() -> NSPanel {

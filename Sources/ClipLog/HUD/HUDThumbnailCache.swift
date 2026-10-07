@@ -45,6 +45,7 @@ final class HUDThumbnailCache {
             return request
         }
 
+        DiagnosticsLogbook.shared.record("thumbnail_cache_miss", category: "hud")
         queue.async { [weak self] in
             guard let self else { return }
             let image = self.decodeThumbnail(for: entry, size: size)
@@ -53,6 +54,15 @@ final class HUDThumbnailCache {
                     image,
                     forKey: request.key as NSString,
                     cost: max(1, Int(size.width * size.height * 4))
+                )
+            } else {
+                DiagnosticsLogbook.shared.record(
+                    "thumbnail_decode_failed",
+                    category: "hud",
+                    details: [
+                        "hasMediaPath": "\(entry.mediaPath != nil)",
+                        "contentBytes": "\(entry.contentData.count)"
+                    ]
                 )
             }
             DispatchQueue.main.async {

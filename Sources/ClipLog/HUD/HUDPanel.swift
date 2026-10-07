@@ -1088,6 +1088,14 @@ public final class HUDPanel {
             multiSelectedOriginalIndices = Set(visibleIndices[lower...upper])
             selectedDisplayIndex = displayIndex
             updateSelection()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "multi_select_range",
+                details: [
+                    "success": "true",
+                    "selectedCount": "\(multiSelectedOriginalIndices.count)"
+                ]
+            )
             return
         }
 
@@ -1109,6 +1117,14 @@ public final class HUDPanel {
             }
             multiSelectionAnchorDisplayIndex = selectedDisplayIndex
             updateSelection()
+            DiagnosticsLogbook.shared.actionOutput(
+                feature: "hud",
+                action: "multi_select_toggle",
+                details: [
+                    "success": "true",
+                    "selectedCount": "\(multiSelectedOriginalIndices.count)"
+                ]
+            )
             return
         }
 
@@ -2271,6 +2287,11 @@ private final class HUDRowView: NSView {
     private func setSensitiveRevealed(_ revealed: Bool) {
         guard let entry, entry.isSensitive else { return }
         isRevealingSensitive = revealed
+        DiagnosticsLogbook.shared.record(
+            revealed ? "sensitive_revealed" : "sensitive_concealed",
+            category: "hud",
+            details: ["entryType": entry.contentType.rawValue]
+        )
         if revealed {
             previewLabel.stringValue = String(data: entry.contentData, encoding: .utf8) ?? entry.previewText
             previewLabel.textColor = .systemYellow
