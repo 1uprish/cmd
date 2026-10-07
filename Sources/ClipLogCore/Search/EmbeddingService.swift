@@ -24,7 +24,22 @@ public final class EmbeddingService: Sendable {
         if let ocr = entry.ocrText { parts.append(ocr) }
         let text = parts.joined(separator: " ")
 
-        guard let vec = SemanticSearch.shared.embed(text) else { return }
-        try? store.updateEmbedding(id: entry.id, embedding: vec)
+        guard let vec = SemanticSearch.shared.embed(text) else {
+            DiagnosticsLogbook.shared.record(
+                "embedding_failed",
+                category: "search",
+                details: ["reason": "no_vector", "entryType": entry.contentType.rawValue]
+            )
+            return
+        }
+        do {
+            try store.updateEmbedding(id: entry.id, embedding: vec)
+        } catch {
+            DiagnosticsLogbook.shared.record(
+                "embedding_failed",
+                category: "search",
+                details: ["reason": "store_error", "entryType": entry.contentType.rawValue]
+            )
+        }
     }
 }

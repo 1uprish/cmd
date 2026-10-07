@@ -31,6 +31,10 @@ public final class PasteboardWatcher: @unchecked Sendable {
     public func setPaused(_ paused: Bool) {
         queue.async {
             self.paused = paused
+            DiagnosticsLogbook.shared.record(
+                paused ? "capture_paused" : "capture_resumed",
+                category: "pasteboard"
+            )
         }
     }
 
@@ -490,6 +494,13 @@ public final class PasteboardWatcher: @unchecked Sendable {
 
     private func publishCapturedEntry(_ entry: ClipEntry) -> Int {
         let ingestStartedAt = Date()
+        if entry.isSensitive {
+            DiagnosticsLogbook.shared.record(
+                "sensitive_captured",
+                category: "pasteboard",
+                details: ["entryType": entry.contentType.rawValue]
+            )
+        }
         onNewEntry?(entry)
         let ingestMs = Self.milliseconds(since: ingestStartedAt)
 

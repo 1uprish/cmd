@@ -35,14 +35,37 @@ public enum FocusedTextInputLocator {
     private static let maxParentDepth = 4
 
     public static func frameNearCursor(_ cursor: NSPoint) -> NSRect? {
-        guard AXIsProcessTrusted(),
-              let focused = elementAttribute(
-                  AXUIElementCreateSystemWide(),
-                  kAXFocusedUIElementAttribute as CFString
-              )
-        else { return nil }
+        guard AXIsProcessTrusted() else {
+            DiagnosticsLogbook.shared.record(
+                "focus_frame_missed",
+                category: "hud",
+                details: ["reason": "untrusted"]
+            )
+            return nil
+        }
+        guard let focused = elementAttribute(
+            AXUIElementCreateSystemWide(),
+            kAXFocusedUIElementAttribute as CFString
+        )
+        else {
+            DiagnosticsLogbook.shared.record(
+                "focus_frame_missed",
+                category: "hud",
+                details: ["reason": "no_focused_element"]
+            )
+            return nil
+        }
 
-        return textInputFrame(startingAt: focused, cursor: cursor, remainingDepth: maxParentDepth)
+        guard let frame = textInputFrame(startingAt: focused, cursor: cursor, remainingDepth: maxParentDepth) else {
+            DiagnosticsLogbook.shared.record(
+                "focus_frame_missed",
+                category: "hud",
+                details: ["reason": "no_text_frame"]
+            )
+            return nil
+        }
+        DiagnosticsLogbook.shared.record("focus_frame_found", category: "hud")
+        return frame
     }
 
     // MARK: - Traversal
@@ -131,6 +154,7 @@ public enum FocusedTextInputLocator {
     // Used only when the deterministic conversion lands off every display.
 
     private static func heuristicAppKitRect(for axRect: CGRect, cursor: NSPoint) -> NSRect? {
+        DiagnosticsLogbook.shared.record("focus_frame_heuristic_fallback", category: "hud")
         let raw = NSRect(x: axRect.minX, y: axRect.minY, width: axRect.width, height: axRect.height)
         let desktopFrame = NSScreen.screens.reduce(NSRect.null) { partial, screen in
             partial.union(screen.frame)

@@ -22,7 +22,14 @@ public actor OCRService {
         guard
             let nsImage = NSImage(contentsOf: imageURL),
             let cgImage = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil)
-        else { return nil }
+        else {
+            DiagnosticsLogbook.shared.record(
+                "ocr_failed",
+                category: "performance",
+                details: ["reason": "decode_failed"]
+            )
+            return nil
+        }
 
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let request = VNRecognizeTextRequest()
@@ -32,10 +39,22 @@ public actor OCRService {
         do {
             try handler.perform([request])
         } catch {
+            DiagnosticsLogbook.shared.record(
+                "ocr_failed",
+                category: "performance",
+                details: ["reason": "request_failed"]
+            )
             return nil
         }
 
-        guard let observations = request.results else { return nil }
+        guard let observations = request.results else {
+            DiagnosticsLogbook.shared.record(
+                "ocr_failed",
+                category: "performance",
+                details: ["reason": "no_results"]
+            )
+            return nil
+        }
 
         let joined = observations
             .compactMap { $0.topCandidates(1).first?.string }
@@ -43,12 +62,34 @@ public actor OCRService {
             .joined(separator: " ")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
-        return joined.isEmpty ? nil : joined
+        guard !joined.isEmpty else {
+            DiagnosticsLogbook.shared.record(
+                "ocr_failed",
+                category: "performance",
+                details: ["reason": "no_text"]
+            )
+            return nil
+        }
+        DiagnosticsLogbook.shared.record(
+            "ocr_completed",
+            category: "performance",
+            details: ["characters": "\(joined.count)"]
+        )
+        return joined
     }
 
     public func processAndStore(entryID: UUID, imageURL: URL, store: ClipStore) async {
         guard let text = await recognizeText(in: imageURL), !text.isEmpty else { return }
-        try? store.updateOCRText(id: entryID, text: text)
+        do {
+            try store.updateOCRText(id: entryID, text: text)
+        } catch {
+            DiagnosticsLogbook.shared.record(
+                "ocr_failed",
+                category: "performance",
+                details: ["reason": "store_error"]
+            )
+            return
+        }
         await MainActor.run {
             NotificationCenter.default.post(
                 name: .clipLogOCRCompleted,

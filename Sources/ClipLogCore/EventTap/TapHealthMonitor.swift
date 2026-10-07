@@ -56,11 +56,13 @@ public final class TapHealthMonitor: @unchecked Sendable {
 
             if !state.wasDegraded {
                 state.wasDegraded = true
+                DiagnosticsLogbook.shared.record("tap_degraded", category: "event_tap")
                 let cb = onDegraded
                 DispatchQueue.main.async { cb() }
             }
         } else if state.wasDegraded {
             state.wasDegraded = false
+            DiagnosticsLogbook.shared.record("tap_recovered", category: "event_tap")
             let cb = onRecovered
             DispatchQueue.main.async { cb() }
         }

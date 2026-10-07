@@ -1,4 +1,5 @@
 import AppKit
+import ClipLogCore
 
 // MARK: - CmdFeedbackSound
 //
@@ -16,6 +17,7 @@ enum CmdFeedbackSound {
     }
 
     private static var cachedSound: NSSound?
+    private static var missingSoundLogged = false
 
     static func play(_ moment: Moment) {
         guard ClipLogSettings.shared.feedbackSoundsEnabled else { return }
@@ -34,7 +36,13 @@ enum CmdFeedbackSound {
         if let cachedSound { return cachedSound }
         let url = Bundle.main.url(forResource: "bencho-poke", withExtension: "wav")
             ?? Bundle.module.url(forResource: "bencho-poke", withExtension: "wav")
-        guard let url, let sound = NSSound(contentsOf: url, byReference: true) else { return nil }
+        guard let url, let sound = NSSound(contentsOf: url, byReference: true) else {
+            if !missingSoundLogged {
+                missingSoundLogged = true
+                DiagnosticsLogbook.shared.record("feedback_sound_missing", category: "feedback")
+            }
+            return nil
+        }
         cachedSound = sound
         return sound
     }
