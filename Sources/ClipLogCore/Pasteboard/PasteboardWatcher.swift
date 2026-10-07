@@ -387,7 +387,12 @@ public final class PasteboardWatcher: @unchecked Sendable {
             DiagnosticsLogbook.shared.actionOutput(
                 feature: "pasteboard",
                 action: "poll_change",
-                details: ["success": "false", "reason": "empty_entry", "entryType": classifiedType.rawValue]
+                details: [
+                    "success": "false",
+                    "reason": "empty_entry",
+                    "entryType": classifiedType.rawValue,
+                    "sourceApp": bundle
+                ]
             )
             return
         }
