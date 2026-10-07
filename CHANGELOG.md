@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.1.1
+
+- HUD: holding `Cmd-V` no longer leaks the V key's auto-repeats to the app behind the panel — the repeated-paste flicker behind the HUD is gone.
+- Gather: HUD navigation keys (arrows, Return, filter typing) and a stray Escape no longer end an active gather session; the session now survives until you toggle it, paste, type into a document, or it times out.
+- Gather: pasting a card from the HUD ends the session cleanly instead of merging the pasted card back into the gathered payload.
+- HUD: image card thumbnails no longer flash when rows rebuild (filter typing, cancelled-drag restore).
+- HUD: a cancelled drag restores the pre-drag filter and selection in a single rebuild, with no second resize pass.
+- Reliability: the capture-pause flag is now synchronized with the pasteboard watcher queue.
+
 ## 1.1.0
 
 - Removed CursorPiP, the Inspiration Journal, and the Onboarding walkthrough.
