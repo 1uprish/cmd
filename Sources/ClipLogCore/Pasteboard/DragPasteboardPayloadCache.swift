@@ -177,7 +177,20 @@ final class ImageDragPayload: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
 
-        if let cachedFileURL { return cachedFileURL }
+        if let cachedFileURL {
+            // The cache directory lives in tmp and can be cleaned out from
+            // under us (system cleanup, the pruner): never serve a stale URL,
+            // fall through and rewrite the file instead.
+            if FileManager.default.fileExists(atPath: cachedFileURL.path) {
+                return cachedFileURL
+            }
+            DiagnosticsLogbook.shared.record(
+                "drag_payload_file_regenerated",
+                category: "drag",
+                details: ["cacheKeyPrefix": String(cacheKey.prefix(12))]
+            )
+            self.cachedFileURL = nil
+        }
         guard let data = pngDataLocked() else { return nil }
         let fileURL = directory.appendingPathComponent(cacheFilename)
         do {
