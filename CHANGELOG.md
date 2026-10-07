@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2
+
+- Drag: image drags rewrite their cached file when tmp cleanup removes it, instead of serving a dead URL for older clips.
+- Capture: ingest warms only the fresh entry instead of decrypting the 20 most recent on every copy — the main cost behind slow capture polls.
+- Telemetry: hover peek, multi-select, sensitive reveal, thumbnails, focus anchoring, embeddings, OCR, tap transitions, pause/resume, and empty captures are now traced; LoggingTests assert the load-bearing telemetry fires.
+- Hover peek diagnostics now pinpoint scheduling vs presentation failures.
+
 ## 1.1.1
 
 - HUD: holding `Cmd-V` no longer leaks the V key's auto-repeats to the app behind the panel — the repeated-paste flicker behind the HUD is gone.

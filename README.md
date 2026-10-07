@@ -49,7 +49,7 @@ For running tests, the active developer directory must provide `XCTest`. A Comma
 
 ## Install
 
-Download the latest `CMD-1.1.1.dmg` from the [Releases](https://github.com/1uprish/cmd/releases) page, open it, and drag `CMD.app` to Applications. On first launch, grant Accessibility access when prompted (or from the menu bar item).
+Download the latest `CMD-1.1.2.dmg` from the [Releases](https://github.com/1uprish/cmd/releases) page, open it, and drag `CMD.app` to Applications. On first launch, grant Accessibility access when prompted (or from the menu bar item).
 
 > Builds are ad-hoc signed unless built with a Developer ID certificate, so Gatekeeper may warn on first open. To bypass for a local build: right-click the app → Open, or `xattr -dr com.apple.quarantine /Applications/CMD.app`.
 
@@ -86,7 +86,7 @@ ALLOW_ADHOC=1 SIGNING_IDENTITY=- ./scripts/build-release.sh
 The DMG is written to:
 
 ```text
-build/CMD-1.1.1.dmg
+build/CMD-1.1.2.dmg
 ```
 
 Ad-hoc DMGs are useful for local testing. For friends or public distribution, use a Developer ID Application certificate and notarize the release.
