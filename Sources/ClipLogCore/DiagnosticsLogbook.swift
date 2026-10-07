@@ -21,7 +21,7 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
             .appendingPathComponent("Reports", isDirectory: true)
     }
 
-    private struct Entry: Codable {
+    struct Entry: Codable {
         let timestamp: String
         let category: String
         let event: String
@@ -102,6 +102,16 @@ public final class DiagnosticsLogbook: @unchecked Sendable {
             } catch {
                 // Diagnostics must never affect clipboard behavior.
             }
+        }
+    }
+
+    /// Test support: flush the writer queue and take the buffered entries.
+    /// Tests run in-process, so this drains telemetry emitted by the action
+    /// under test without touching the log files.
+    func drainEntriesForTests() -> [Entry] {
+        queue.sync {
+            defer { recentEntries.removeAll() }
+            return recentEntries
         }
     }
 
