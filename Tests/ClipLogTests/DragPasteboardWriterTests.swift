@@ -3,6 +3,15 @@ import AppKit
 @testable import ClipLogCore
 
 final class DragPasteboardWriterTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
 
     private func entry(_ type: ClipContentType, _ text: String) -> ClipEntry {
         let data = Data(text.utf8)

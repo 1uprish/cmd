@@ -4,6 +4,16 @@ import XCTest
 @testable import ClipLogCore
 
 final class ClipPasteboardWriterTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
+
     private static let onePixelPNG = Data(base64Encoded: """
     iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=
     """)!

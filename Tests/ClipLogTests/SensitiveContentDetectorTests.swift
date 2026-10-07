@@ -2,6 +2,16 @@ import XCTest
 @testable import ClipLogCore
 
 final class SensitiveContentDetectorTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
+
     func test_detectsLabelledApiKey() {
         XCTAssertTrue(SensitiveContentDetector.isSensitive("api_key=sk-demo_copy_this_is_fake_9x4Tqv7L"))
     }

@@ -12,7 +12,34 @@ public enum AppStoragePaths {
         "CopyPasta",
     ]
 
+    // Test-only redirect for the whole storage tree (logs, media, database).
+    // Tests share the device's Application Support path with the running app,
+    // so without this every test run mingles with field telemetry. Guarded by
+    // a lock; set/restored per test. Skips legacy migration by design.
+    private final class OverrideBox: @unchecked Sendable {
+        let lock = NSLock()
+        var baseDirectory: URL?
+    }
+    private static let overrideBox = OverrideBox()
+
+    static var testBaseDirectoryOverride: URL? {
+        get {
+            overrideBox.lock.lock()
+            defer { overrideBox.lock.unlock() }
+            return overrideBox.baseDirectory
+        }
+        set {
+            overrideBox.lock.lock()
+            defer { overrideBox.lock.unlock() }
+            overrideBox.baseDirectory = newValue
+        }
+    }
+
     public static var applicationSupportDirectory: URL {
+        if let override = testBaseDirectoryOverride {
+            try? FileManager.default.createDirectory(at: override, withIntermediateDirectories: true)
+            return override
+        }
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask

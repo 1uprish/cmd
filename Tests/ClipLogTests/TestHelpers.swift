@@ -31,6 +31,28 @@ extension ClipEntry {
     }
 }
 
+// MARK: - Test storage isolation
+
+/// Redirects the whole storage tree (logs, media, database paths) at a
+/// per-test temporary directory, so test runs never mingle with the field
+/// state in ~/Library/Application Support/cmd. Call `useTemporaryBase()`
+/// in setUp and `resetBase()` in tearDown. The general pasteboard itself is
+/// inherently shared; tests that touch it must keep save/restoring it.
+enum TestStorage {
+    @discardableResult
+    static func useTemporaryBase() -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("cmd-tests-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        AppStoragePaths.testBaseDirectoryOverride = url
+        return url
+    }
+
+    static func resetBase() {
+        AppStoragePaths.testBaseDirectoryOverride = nil
+    }
+}
+
 // MARK: - In-memory ClipStore factory
 
 extension ClipStore {

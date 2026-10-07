@@ -9,10 +9,12 @@ final class ClipStoreTests: XCTestCase {
 
     override func setUpWithError() throws {
         try super.setUpWithError()
+        TestStorage.useTemporaryBase()
         store = try .makeInMemory()
     }
 
     override func tearDown() {
+        TestStorage.resetBase()
         store = nil
         super.tearDown()
     }

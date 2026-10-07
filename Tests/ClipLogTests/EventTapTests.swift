@@ -2,6 +2,15 @@ import XCTest
 @testable import ClipLogCore
 
 final class StateMachineTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
 
     func test_cmdVDown_suppressed() {
         var sm = StateMachine()

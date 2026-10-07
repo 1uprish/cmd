@@ -7,11 +7,13 @@ final class AppendModeTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestStorage.useTemporaryBase()
         previousString = NSPasteboard.general.string(forType: .string)
         NSPasteboard.general.clearContents()
     }
 
     override func tearDown() {
+        TestStorage.resetBase()
         NSPasteboard.general.clearContents()
         if let previousString {
             NSPasteboard.general.setString(previousString, forType: .string)

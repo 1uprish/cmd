@@ -3,6 +3,16 @@ import XCTest
 @testable import ClipLogCore
 
 final class ClipboardTokenPresentationTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
+
     func testTextUsesACompactSingleLinePreview() throws {
         let presentation = try XCTUnwrap(presentation(type: .text, value: "  Apple skill\nright now  "))
 

@@ -15,12 +15,14 @@ final class LoggingTests: XCTestCase {
 
     override func setUp() {
         super.setUp()
+        TestStorage.useTemporaryBase()
         previousString = NSPasteboard.general.string(forType: .string)
         NSPasteboard.general.clearContents()
         _ = DiagnosticsLogbook.shared.drainEntriesForTests()
     }
 
     override func tearDown() {
+        TestStorage.resetBase()
         NSPasteboard.general.clearContents()
         if let previousString {
             NSPasteboard.general.setString(previousString, forType: .string)
@@ -37,6 +39,21 @@ final class LoggingTests: XCTestCase {
             entries.contains {
                 $0.event == "test_probe" && $0.category == "test" && $0.details["key"] == "value"
             }
+        )
+    }
+
+    func test_storageOverrideRedirectsLogFiles() {
+        let dir = TestStorage.useTemporaryBase()
+        XCTAssertEqual(AppStoragePaths.applicationSupportDirectory, dir)
+        XCTAssertTrue(
+            DiagnosticsLogbook.shared.logFileURL.path.hasPrefix(dir.path),
+            "log file must live under the test base directory"
+        )
+
+        TestStorage.resetBase()
+        XCTAssertFalse(
+            AppStoragePaths.applicationSupportDirectory.path.contains("cmd-tests-"),
+            "reset must restore the real application support path"
         )
     }
 

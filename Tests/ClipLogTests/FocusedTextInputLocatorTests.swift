@@ -2,6 +2,15 @@ import XCTest
 @testable import ClipLogCore
 
 final class FocusedTextInputLocatorTests: XCTestCase {
+    override func setUp() {
+        super.setUp()
+        TestStorage.useTemporaryBase()
+    }
+
+    override func tearDown() {
+        TestStorage.resetBase()
+        super.tearDown()
+    }
 
     func test_convertsAXRectOnPrimaryDisplay() {
         let ax = CGRect(x: 10, y: 100, width: 200, height: 30)
