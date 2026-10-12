@@ -204,6 +204,72 @@ public enum ClipPasteboardWriter {
         return storedImageDataCandidates(for: entry).first { NSImage(data: $0) != nil }
     }
 
+    /// Best-effort image bytes for hover PiP + thumbnails across image, file,
+    /// and rich (mixed web) clips. Local-only: file URLs on disk and embedded
+    /// data-URL images. Remote http(s) images are never downloaded.
+    public static func previewImageData(for entry: ClipEntry) -> Data? {
+        switch entry.contentType {
+        case .image:
+            return originalImageData(for: entry)
+        case .file:
+            return firstLocalImageData(for: entry)
+        case .rich:
+            return embeddedRichImageData(for: entry)
+        case .text, .url, .code, .color:
+            return nil
+        }
+    }
+
+    private static let previewableImageExtensions: Set<String> = [
+        "jpg", "jpeg", "png", "gif", "webp", "tiff", "tif", "heic", "heif", "bmp"
+    ]
+    private static let maxPreviewFileBytes = 20 * 1024 * 1024
+    private static let maxEmbeddedImageBytes = 12 * 1024 * 1024
+
+    private static func firstLocalImageData(for entry: ClipEntry) -> Data? {
+        let raw = String(data: entry.contentData, encoding: .utf8) ?? ""
+        for line in raw.components(separatedBy: "\n").filter({ !$0.isEmpty }) {
+            guard let url = URL(string: line), url.isFileURL else { continue }
+            guard previewableImageExtensions.contains(url.pathExtension.lowercased()) else { continue }
+            guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  size <= maxPreviewFileBytes
+            else { continue }
+            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe),
+                  !data.isEmpty, data.count <= maxPreviewFileBytes,
+                  NSImage(data: data) != nil
+            else { continue }
+            return data
+        }
+        return nil
+    }
+
+    private static func embeddedRichImageData(for entry: ClipEntry) -> Data? {
+        guard let mediaPath = entry.mediaPath else { return nil }
+        let url = AppStoragePaths.mediaDirectory.appendingPathComponent(mediaPath)
+        guard let payloadData = try? Data(contentsOf: url),
+              let payload = decodeRichPayload(payloadData),
+              let html = payload.html, !html.isEmpty
+        else { return nil }
+        guard let regex = try? NSRegularExpression(
+            pattern: "data:image/[a-zA-Z0-9+.-]+;base64,([A-Za-z0-9+/=\\s]+)",
+            options: [.caseInsensitive]
+        ) else { return nil }
+        let range = NSRange(html.startIndex..., in: html)
+        for match in regex.matches(in: html, options: [], range: range) {
+            guard match.numberOfRanges == 2,
+                  let b64Range = Range(match.range(at: 1), in: html)
+            else { continue }
+            let b64 = html[b64Range].filter { !$0.isWhitespace }
+            guard !b64.isEmpty, b64.count <= maxEmbeddedImageBytes * 4 / 3,
+                  let data = Data(base64Encoded: String(b64), options: .ignoreUnknownCharacters),
+                  !data.isEmpty, data.count <= maxEmbeddedImageBytes,
+                  NSImage(data: data) != nil
+            else { continue }
+            return data
+        }
+        return nil
+    }
+
     static func storedImageData(for entry: ClipEntry) -> Data? {
         storedImageDataCandidates(for: entry).first
     }

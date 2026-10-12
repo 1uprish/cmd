@@ -252,7 +252,7 @@ final class AppendSessionPanel {
         }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = reduceMotion ? 0.10 : 0.16
-            context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            context.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
             panel.animator().alphaValue = 0
             if !reduceMotion {
                 var frame = panel.frame
@@ -564,7 +564,7 @@ private final class TeleprompterTextView: NSView {
             self.currentIndex = (self.currentIndex + 1) % self.segments.count
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = 0.16
-                context.timingFunction = CAMediaTimingFunction(name: .easeIn)
+                context.timingFunction = CAMediaTimingFunction(controlPoints: 0.23, 1, 0.32, 1)
                 self.label.animator().alphaValue = 0
             } completionHandler: { [weak self] in
                 guard let self, self.animationToken == token else { return }
