@@ -24,7 +24,7 @@ final class HUDThumbnailCache {
         size: NSSize,
         completion: @escaping (Request, NSImage?) -> Void
     ) -> Request? {
-        guard entry.contentType == .image, !entry.isSensitive else { return nil }
+        guard [.image, .file, .rich].contains(entry.contentType), !entry.isSensitive else { return nil }
 
         let request = Request(
             key: cacheKey(for: entry, size: size),
@@ -81,6 +81,13 @@ final class HUDThumbnailCache {
     }
 
     private func decodeThumbnail(for entry: ClipEntry, size: NSSize) -> NSImage? {
+        // File (.jpeg on disk) and rich (Pinterest-style mixed) clips resolve
+        // through the shared preview resolver first.
+        if let data = ClipPasteboardWriter.previewImageData(for: entry) {
+            if let thumb = decodeThumbnail(data: data, size: size) {
+                return thumb
+            }
+        }
         if let mediaPath = entry.mediaPath {
             let url = AppStoragePaths.mediaDirectory.appendingPathComponent(mediaPath)
             if let image = decodeThumbnail(url: url, size: size) {

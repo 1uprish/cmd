@@ -61,6 +61,7 @@ final class TapController {
             pasteboardWatcher.onNewEntry = { [weak self, weak slots, weak mbc] entry in
                 slots?.ingest(entry)
                 mbc?.notifyNewEntry()
+                CopyColorPopController.shared.flash(for: entry)
                 if let store = self?.clipStore {
                     self?.purgeExpiredSensitiveItems(in: store)
                 }

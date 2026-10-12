@@ -334,6 +334,7 @@ public final class HUDPanel {
         baseSlots = currentSlots
         didInitialLayout = false
         ClipPasteboardWriter.prewarmDragPayloads(for: currentSlots)
+        prewarmThumbnails(for: currentSlots)
         filterText = ""
         selectedDisplayIndex = nil
         multiSelectedOriginalIndices = []
@@ -402,6 +403,20 @@ public final class HUDPanel {
 
         DispatchQueue.main.async { [weak self] in
             self?.installDismissGuards(sessionID: sessionID)
+        }
+    }
+
+    /// Warm the thumbnail cache on open so image cards show their picture
+    /// immediately instead of popping in a frame late. Covers screenshots,
+    /// image files (.jpeg on disk), and mixed web clips with embedded images.
+    private func prewarmThumbnails(for slots: [ClipEntry]) {
+        let scale = currentHUDScale * CmdTypography.textScale
+        let size = NSSize(
+            width: (46 * scale).rounded(),
+            height: (46 * scale).rounded()
+        )
+        for entry in slots where [.image, .file, .rich].contains(entry.contentType) && !entry.isSensitive {
+            _ = HUDThumbnailCache.shared.request(entry: entry, size: size) { _, _ in }
         }
     }
 
@@ -1728,7 +1743,6 @@ public final class HUDPanel {
     }
 
     private func removeDismissGuards() {
-        HUDPeekController.shared.hide()
         if let clickMonitor {
             NSEvent.removeMonitor(clickMonitor)
             self.clickMonitor = nil
@@ -1949,7 +1963,6 @@ private final class HUDRowView: NSView {
     private var copyResetTimer: Timer?
     private var revealTimer: Timer?
     private var isRevealingSensitive = false
-    private var peekWorkItem: DispatchWorkItem?
     private var cardOpacity: CGFloat = 1.0
     private var sizeScale: CGFloat = 1.0
     private var cachedDragImage: NSImage?
@@ -2045,7 +2058,6 @@ private final class HUDRowView: NSView {
 
     func configure(entry: ClipEntry, index: Int) {
         cancelSensitiveReveal()
-        cancelPeek()
         self.entry = entry
         self.index = index
         isEmptyRow = false
@@ -2067,7 +2079,6 @@ private final class HUDRowView: NSView {
     }
 
     func configureEmpty(title: String, message: String) {
-        cancelPeek()
         entry = nil
         index = nil
         isEmptyRow = true
@@ -2113,46 +2124,30 @@ private final class HUDRowView: NSView {
 
         let left = scaled(16)
         let right = scaled(14)
-        // When there is a thumbnail, it is the content: show it and drop the app
-        // icon so two similar squares don't compete. The app name still labels it.
+        // Leading media is always one 46pt square: the app icon, or the
+        // thumbnail in its exact place. Uniform slot, no text reflow.
         let hasThumbnail = !thumbnailView.isHidden
         let iconSize: CGFloat = isEmptyRow ? 0 : scaled(46)
-        let thumbnailSize = NSSize(width: scaled(84), height: scaled(56))
-        let thumbnailGap: CGFloat = hasThumbnail ? scaled(14) : 0
         let buttonSize: CGFloat = copyButton.isHidden ? 0 : scaled(30)
         let timeWidth: CGFloat = timestampLabel.stringValue.isEmpty ? 0 : scaled(76)
 
-        appIconView.isHidden = isEmptyRow
+        let mediaFrame = NSRect(
+            x: left,
+            y: (bounds.height - iconSize) / 2,
+            width: iconSize,
+            height: iconSize
+        )
         if hasThumbnail {
-            thumbnailView.frame = NSRect(
-                x: left,
-                y: (bounds.height - thumbnailSize.height) / 2,
-                width: thumbnailSize.width,
-                height: thumbnailSize.height
-            )
-            // Source badge on the thumbnail's bottom-left corner.
-            let badge = scaled(20)
-            appIconView.frame = NSRect(
-                x: thumbnailView.frame.minX + scaled(5),
-                y: thumbnailView.frame.minY + scaled(5),
-                width: badge,
-                height: badge
-            )
-            appIconView.layer?.cornerRadius = badge * 0.29
-            appIconView.layer?.borderWidth = 1
-            appIconView.layer?.borderColor = NSColor.black.withAlphaComponent(0.4).cgColor
+            thumbnailView.frame = mediaFrame
+            appIconView.isHidden = true
         } else {
-            appIconView.frame = NSRect(
-                x: left,
-                y: (bounds.height - iconSize) / 2,
-                width: iconSize,
-                height: iconSize
-            )
+            appIconView.isHidden = isEmptyRow
+            appIconView.frame = mediaFrame
             appIconView.layer?.cornerRadius = scaled(12)
             appIconView.layer?.borderWidth = 0
         }
 
-        let leadingWidth = hasThumbnail ? thumbnailSize.width + thumbnailGap : iconSize + scaled(14)
+        let leadingWidth = iconSize + scaled(14)
         let textX = isEmptyRow ? left : left + leadingWidth
         let trailingControls = timeWidth + buttonSize + (buttonSize > 0 ? scaled(12) : 0) + scaled(8)
         let textWidth = max(80, bounds.width - textX - right - trailingControls)
@@ -2189,7 +2184,6 @@ private final class HUDRowView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         dragStarted = false
-        cancelPeek()
         mouseDownLocation = convert(event.locationInWindow, from: nil)
         if !isEmptyRow {
             NSCursor.closedHand.set()
@@ -2198,75 +2192,8 @@ private final class HUDRowView: NSView {
         scheduleSensitiveReveal()
     }
 
-    // Hovering an image card reveals the full image, so the thumbnail only has
-    // to be a signpost.
-    private func schedulePeek() {
-        peekWorkItem?.cancel()
-        guard let entry else {
-            DiagnosticsLogbook.shared.record("peek_skipped", category: "hud", details: ["reason": "no_entry"])
-            return
-        }
-        guard entry.contentType == .image else {
-            DiagnosticsLogbook.shared.record(
-                "peek_skipped",
-                category: "hud",
-                details: ["reason": "not_image", "entryType": entry.contentType.rawValue]
-            )
-            return
-        }
-        guard !entry.isSensitive else {
-            DiagnosticsLogbook.shared.record("peek_skipped", category: "hud", details: ["reason": "sensitive"])
-            return
-        }
-        DiagnosticsLogbook.shared.record("peek_scheduled", category: "hud")
-        let item = DispatchWorkItem { [weak self] in self?.presentPeek() }
-        peekWorkItem = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: item)
-    }
-
-    private func cancelPeek() {
-        peekWorkItem?.cancel()
-        peekWorkItem = nil
-        HUDPeekController.shared.hide()
-    }
-
-    private func presentPeek() {
-        guard let entry, entry.contentType == .image, !entry.isSensitive, !isEmptyRow else {
-            DiagnosticsLogbook.shared.record("peek_abandoned", category: "hud", details: ["reason": "entry_changed"])
-            return
-        }
-        guard let window else {
-            DiagnosticsLogbook.shared.record("peek_abandoned", category: "hud", details: ["reason": "no_window"])
-            return
-        }
-        guard let image = fullImage(for: entry) else {
-            DiagnosticsLogbook.shared.record(
-                "peek_abandoned",
-                category: "hud",
-                details: ["reason": "no_image", "thumbnailLoaded": "\(thumbnailView.image != nil)"]
-            )
-            return
-        }
-        let screenRect = window.convertToScreen(convert(bounds, to: nil))
-        DiagnosticsLogbook.shared.record(
-            "peek_shown",
-            category: "hud",
-            details: [
-                "imageWidth": "\(Int(image.size.width))",
-                "imageHeight": "\(Int(image.size.height))",
-                "anchor": NSStringFromRect(screenRect)
-            ]
-        )
-        HUDPeekController.shared.show(image: image, near: screenRect)
-    }
-
-    private func fullImage(for entry: ClipEntry) -> NSImage? {
-        if let data = ClipPasteboardWriter.originalImageData(for: entry),
-           let image = NSImage(data: data) {
-            return image
-        }
-        return thumbnailView.image
-    }
+    // The thumbnail is the content for image/file/mixed rows: same 46pt
+    // leading square as the app icon so every row scans identically.
 
     // Deliberate press-and-hold reveals a redacted item so people stay in
     // control of secrets without leaving them exposed by default.
@@ -2305,7 +2232,6 @@ private final class HUDRowView: NSView {
 
     override func mouseDragged(with event: NSEvent) {
         cancelSensitiveReveal()
-        cancelPeek()
         guard !isEmptyRow, let index, !dragStarted else { return }
         let dragStart = Date()
         let point = convert(event.locationInWindow, from: nil)
@@ -2384,14 +2310,12 @@ private final class HUDRowView: NSView {
         }
         applyChrome()
         animateHoverLift(active: true)
-        schedulePeek()
     }
 
     override func mouseExited(with event: NSEvent) {
         hovering = false
         NSCursor.arrow.set()
         cancelSensitiveReveal()
-        cancelPeek()
         applyChrome()
         animateHoverLift(active: false)
     }
@@ -2477,7 +2401,7 @@ private final class HUDRowView: NSView {
         cardBlur.layer?.cornerRadius = scaled(CmdVisualStyle.cardCornerRadius)
         appIconView.layer?.cornerRadius = scaled(12)
         copyButton.layer?.cornerRadius = scaled(8)
-        thumbnailView.layer?.cornerRadius = scaled(8)
+        thumbnailView.layer?.cornerRadius = scaled(12)
         appNameLabel.font = .systemFont(ofSize: scaled(14), weight: .semibold)
         previewLabel.font = .systemFont(ofSize: scaled(13), weight: .regular)
         timestampLabel.font = .systemFont(ofSize: scaled(12), weight: .regular)
@@ -2564,7 +2488,7 @@ private final class HUDRowView: NSView {
 
     private func configureThumbnail(for entry: ClipEntry) {
         clearThumbnail()
-        let size = NSSize(width: scaled(84), height: scaled(56))
+        let size = NSSize(width: scaled(46), height: scaled(46))
         activeThumbnailRequest = HUDThumbnailCache.shared.request(entry: entry, size: size) { [weak self] request, image in
             guard let self,
                   self.activeThumbnailRequest == request,

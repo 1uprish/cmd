@@ -15,6 +15,7 @@ public final class ClipLogSettings: ObservableObject {
         static let userExcludedBundles = "userExcludedBundles"
         static let launchAtLogin       = "launchAtLogin"
         static let feedbackSoundsEnabled = "feedbackSoundsEnabled"
+        static let copyPopEnabled = "copyPopEnabled"
         static let capturePausedUntil = "capturePausedUntil"
         static let hudOpacity          = "hudOpacity"
         static let hudSizeScale        = "hudSizeScale"
@@ -126,6 +127,18 @@ public final class ClipLogSettings: ObservableObject {
         }
     }
 
+    /// Show a little colour pop near the cursor on every copy.
+    @Published public var copyPopEnabled: Bool {
+        didSet {
+            logSettingChange(
+                name: Keys.copyPopEnabled,
+                oldValue: "\(oldValue)",
+                newValue: "\(copyPopEnabled)"
+            )
+            UserDefaults.standard.set(copyPopEnabled, forKey: Keys.copyPopEnabled)
+        }
+    }
+
     /// HUD card background opacity — 0.4 (very transparent) … 1.0 (fully opaque glass)
     @Published public var hudOpacity: Double {
         didSet {
@@ -233,6 +246,7 @@ public final class ClipLogSettings: ObservableObject {
             Keys.userExcludedBundles: [String](),
             Keys.launchAtLogin:       false,
             Keys.feedbackSoundsEnabled: false,
+            Keys.copyPopEnabled: true,
             Keys.capturePausedUntil: 0.0,
             Keys.hudOpacity:          1.0,
             Keys.hudSizeScale:        1.0,
@@ -250,6 +264,7 @@ public final class ClipLogSettings: ObservableObject {
         userExcludedBundles = defaults.stringArray(forKey: Keys.userExcludedBundles) ?? []
         launchAtLogin       = defaults.bool(forKey: Keys.launchAtLogin)
         feedbackSoundsEnabled = defaults.bool(forKey: Keys.feedbackSoundsEnabled)
+        copyPopEnabled = defaults.object(forKey: Keys.copyPopEnabled) as? Bool ?? true
         capturePausedUntil = defaults.double(forKey: Keys.capturePausedUntil)
         hudOpacity          = defaults.double(forKey: Keys.hudOpacity)
         hudSizeScale        = defaults.double(forKey: Keys.hudSizeScale)
@@ -274,6 +289,7 @@ public final class ClipLogSettings: ObservableObject {
         hudAnimationStyle = "magnetic"
         hudCardCount = 20
         feedbackSoundsEnabled = false
+        copyPopEnabled = true
         capturePausedUntil = 0
         remoteDiagnosticsEnabled = false
         remoteDiagnosticsEndpoint = ""

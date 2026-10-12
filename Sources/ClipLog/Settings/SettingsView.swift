@@ -552,6 +552,24 @@ public struct SettingsView: View {
 
             Divider()
 
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Copy color pop")
+                        .font(.body)
+                    Text("A little burst near the cursor on copy — pink text, purple link, lime image.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Toggle("", isOn: Binding(
+                    get: { settings.copyPopEnabled },
+                    set: { settings.copyPopEnabled = $0 }
+                ))
+                .labelsHidden()
+            }
+
+            Divider()
+
             HStack {
                 Button("Reset to Defaults…") {
                     showResetConfirm = true
@@ -833,7 +851,7 @@ private struct HUDTransitionPreview: View {
     private var rootAnimation: Animation {
         switch phase {
         case .closing:
-            return .easeIn(duration: motion.exitDuration)
+            return .easeOut(duration: motion.exitDuration)
         default:
             return motion.timing
         }
@@ -927,7 +945,7 @@ private struct HUDTransitionPreview: View {
     private var rowAnimation: Animation {
         switch phase {
         case .closing:
-            return .easeIn(duration: motion.exitDuration)
+            return .easeOut(duration: motion.exitDuration)
         default:
             return motion.timing
         }
